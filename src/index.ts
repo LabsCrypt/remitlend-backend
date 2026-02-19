@@ -2,6 +2,8 @@ import express, { type Request, type Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { json } from 'body-parser';
+import swaggerUi from 'swagger-ui-express';
+import { swaggerSpec } from "./config/swagger.js";
 
 dotenv.config();
 
@@ -18,6 +20,8 @@ app.get('/', (req: Request, res: Response) => {
 });
 
 app.use('/api', simulationRoutes);
+
+app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 app.listen(port, () => {
     console.log(`Server is running on port ${port}`);

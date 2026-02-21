@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 import simulationRoutes from './routes/simulationRoutes.js';
+import scoreRoutes from './routes/scoreRoutes.js';
 import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from "./config/swagger.js";
 import { globalRateLimiter } from './middleware/rateLimiter.js';
@@ -43,6 +44,7 @@ app.get('/health', (req, res) => {
 });
 
 app.use('/api', simulationRoutes);
+app.use('/api/score', scoreRoutes);
 
 app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 

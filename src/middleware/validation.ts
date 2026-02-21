@@ -1,5 +1,5 @@
-import type { Request, Response, NextFunction } from 'express';
-import { type ZodSchema } from 'zod';
+import type { Request, Response, NextFunction } from "express";
+import { type ZodSchema } from "zod";
 
 /**
  * Express middleware factory that validates incoming requests against
@@ -7,16 +7,16 @@ import { type ZodSchema } from 'zod';
  * global error handler via `next(error)`.
  */
 export const validate = (schema: ZodSchema) => {
-    return (req: Request, _res: Response, next: NextFunction) => {
-        try {
-            schema.parse({
-                body: req.body,
-                query: req.query,
-                params: req.params
-            });
-            next();
-        } catch (error) {
-            next(error);
-        }
-    };
+  return (req: Request, _res: Response, next: NextFunction) => {
+    try {
+      schema.parse({
+        body: req.body,
+        query: req.query,
+        params: req.params,
+      });
+      next();
+    } catch (error) {
+      next(error);
+    }
+  };
 };

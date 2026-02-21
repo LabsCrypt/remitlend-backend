@@ -1,9 +1,9 @@
-import { Router } from 'express';
-import { getScore, updateScore } from '../controllers/scoreController.js';
-import { validate } from '../middleware/validation.js';
-import { getScoreSchema, updateScoreSchema } from '../schemas/scoreSchemas.js';
-import { requireApiKey } from '../middleware/auth.js';
-import { strictRateLimiter } from '../middleware/rateLimiter.js';
+import { Router } from "express";
+import { getScore, updateScore } from "../controllers/scoreController.js";
+import { validate } from "../middleware/validation.js";
+import { getScoreSchema, updateScoreSchema } from "../schemas/scoreSchemas.js";
+import { requireApiKey } from "../middleware/auth.js";
+import { strictRateLimiter } from "../middleware/rateLimiter.js";
 
 const router = Router();
 
@@ -46,7 +46,7 @@ const router = Router();
  *       400:
  *         description: Invalid user ID.
  */
-router.get('/:userId', validate(getScoreSchema), getScore);
+router.get("/:userId", validate(getScoreSchema), getScore);
 
 /**
  * @swagger
@@ -107,6 +107,12 @@ router.get('/:userId', validate(getScoreSchema), getScore);
  *       401:
  *         description: Unauthorised — missing or invalid API key.
  */
-router.post('/update', requireApiKey, strictRateLimiter, validate(updateScoreSchema), updateScore);
+router.post(
+  "/update",
+  requireApiKey,
+  strictRateLimiter,
+  validate(updateScoreSchema),
+  updateScore,
+);
 
 export default router;

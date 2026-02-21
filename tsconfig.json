@@ -34,12 +34,9 @@
     "jsx": "react-jsx",
     // "verbatimModuleSyntax": true,
     "isolatedModules": true,
-      "esModuleInterop": true,
+    "esModuleInterop": true,
     // "noUncheckedSideEffectImports": true,
     // "moduleDetection": "force",
-    "skipLibCheck": true,
-
-
-    
+    "skipLibCheck": true
   }
 }

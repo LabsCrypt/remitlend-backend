@@ -9,15 +9,16 @@ The `validate` middleware function accepts a Zod schema and validates the reques
 ### Example
 
 ```typescript
-import { validate } from '../middleware/validation.js';
-import { mySchema } from '../schemas/mySchemas.js';
+import { validate } from "../middleware/validation.js";
+import { mySchema } from "../schemas/mySchemas.js";
 
-router.post('/endpoint', validate(mySchema), myController);
+router.post("/endpoint", validate(mySchema), myController);
 ```
 
 ## Schema Structure
 
 Schemas should validate the following request properties:
+
 - `body` - Request body data
 - `params` - URL parameters
 - `query` - Query string parameters
@@ -25,16 +26,16 @@ Schemas should validate the following request properties:
 ### Example Schema
 
 ```typescript
-import { z } from 'zod';
+import { z } from "zod";
 
 export const mySchema = z.object({
-    body: z.object({
-        name: z.string().min(1),
-        age: z.number().positive()
-    }),
-    params: z.object({
-        id: z.string()
-    })
+  body: z.object({
+    name: z.string().min(1),
+    age: z.number().positive(),
+  }),
+  params: z.object({
+    id: z.string(),
+  }),
 });
 ```
 
@@ -44,13 +45,13 @@ When validation fails, the middleware returns a 400 status with:
 
 ```json
 {
-    "success": false,
-    "message": "Validation failed",
-    "errors": [
-        {
-            "path": "body.fieldName",
-            "message": "Error message"
-        }
-    ]
+  "success": false,
+  "message": "Validation failed",
+  "errors": [
+    {
+      "path": "body.fieldName",
+      "message": "Error message"
+    }
+  ]
 }
 ```

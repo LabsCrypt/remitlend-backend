@@ -1,4 +1,5 @@
 import type { Request, Response } from 'express';
+import { asyncHandler } from '../middleware/asyncHandler.js';
 
 // ---------------------------------------------------------------------------
 // Score computation helpers
@@ -46,8 +47,8 @@ const LATE_DELTA = -30;
  * and the key factors that influence the score.  Intended to be called by
  * LoanManager and other contracts that need to make lending decisions.
  */
-export const getScore = (req: Request, res: Response): void => {
-    const { userId } = req.params;
+export const getScore = asyncHandler(async (req: Request, res: Response) => {
+    const { userId } = req.params as { userId: string };
 
     const score = baseScore(userId);
     const band = getCreditBand(score);
@@ -63,7 +64,7 @@ export const getScore = (req: Request, res: Response): void => {
             range: '500 (Poor) – 850 (Excellent)'
         }
     });
-};
+});
 
 /**
  * POST /api/score/update
@@ -74,7 +75,7 @@ export const getScore = (req: Request, res: Response): void => {
  *
  * Body: { userId: string, repaymentAmount: number, onTime: boolean }
  */
-export const updateScore = (req: Request, res: Response): void => {
+export const updateScore = asyncHandler(async (req: Request, res: Response) => {
     const { userId, repaymentAmount, onTime } = req.body as {
         userId: string;
         repaymentAmount: number;
@@ -98,4 +99,4 @@ export const updateScore = (req: Request, res: Response): void => {
         newScore,
         band
     });
-};
+});

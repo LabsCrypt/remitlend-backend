@@ -1,6 +1,19 @@
 import request from "supertest";
-import app from "../app.js";
+import { jest } from "@jest/globals";
 
+// Setup mocks BEFORE importing the app or the module under test
+const mockQuery = jest.fn();
+jest.unstable_mockModule("../db/connection.js", () => ({
+  query: mockQuery,
+  getClient: jest.fn(),
+  closePool: jest.fn(),
+}));
+
+// Use dynamic imports to ensure mocks are applied
+const { query } = (await import("../db/connection.js")) as any;
+const { default: app } = (await import("../app.js")) as any;
+
+const mockedQuery = query as jest.Mock;
 const VALID_API_KEY = "test-internal-key";
 
 beforeAll(() => {
@@ -9,6 +22,7 @@ beforeAll(() => {
 
 afterAll(() => {
   delete process.env.INTERNAL_API_KEY;
+  jest.clearAllMocks();
 });
 
 // ---------------------------------------------------------------------------
@@ -16,32 +30,34 @@ afterAll(() => {
 // ---------------------------------------------------------------------------
 describe("GET /api/score/:userId", () => {
   it("should return a score for a valid userId", async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [{ current_score: 750 }] });
+    
     const response = await request(app).get("/api/score/user123");
 
     expect(response.status).toBe(200);
     expect(response.body.success).toBe(true);
     expect(response.body.userId).toBe("user123");
-    expect(typeof response.body.score).toBe("number");
-    expect(response.body.score).toBeGreaterThanOrEqual(500);
-    expect(response.body.score).toBeLessThanOrEqual(850);
+    expect(response.body.score).toBe(750);
     expect(response.body.band).toBeDefined();
     expect(response.body.factors).toBeDefined();
   });
 
-  it("should return the same score for the same userId (deterministic)", async () => {
+  it("should return the same score for the same userId", async () => {
+    mockedQuery.mockResolvedValue({ rows: [{ current_score: 600 }] });
+    
     const r1 = await request(app).get("/api/score/alice");
     const r2 = await request(app).get("/api/score/alice");
 
     expect(r1.body.score).toBe(r2.body.score);
   });
 
-  it("should return different scores for different userIds", async () => {
-    const r1 = await request(app).get("/api/score/alice");
-    const r2 = await request(app).get("/api/score/bob");
+  it("should return 500 if user not found", async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [] });
+    
+    const response = await request(app).get("/api/score/newuser");
 
-    // Cannot guarantee different, but with realistic ids they will differ
-    expect(typeof r1.body.score).toBe("number");
-    expect(typeof r2.body.score).toBe("number");
+    expect(response.status).toBe(200);
+    expect(response.body.score).toBe(500);
   });
 
   it("should return 404 for empty userId segment", async () => {
@@ -78,6 +94,11 @@ describe("POST /api/score/update", () => {
 
   describe("Successful updates", () => {
     it("should increase score by 15 for on-time repayment", async () => {
+      // Mock old score fetch
+      mockedQuery.mockResolvedValueOnce({ rows: [{ current_score: 500 }] });
+      // Mock UPSERT returning new score
+      mockedQuery.mockResolvedValueOnce({ rows: [{ current_score: 515 }] });
+
       const response = await request(app)
         .post("/api/score/update")
         .set("x-api-key", VALID_API_KEY)
@@ -86,11 +107,15 @@ describe("POST /api/score/update", () => {
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
       expect(response.body.delta).toBe(15);
-      expect(response.body.newScore).toBe(response.body.oldScore + 15);
+      expect(response.body.oldScore).toBe(500);
+      expect(response.body.newScore).toBe(515);
       expect(response.body.band).toBeDefined();
     });
 
     it("should decrease score by 30 for a late repayment", async () => {
+      mockedQuery.mockResolvedValueOnce({ rows: [{ current_score: 500 }] });
+      mockedQuery.mockResolvedValueOnce({ rows: [{ current_score: 470 }] });
+
       const response = await request(app)
         .post("/api/score/update")
         .set("x-api-key", VALID_API_KEY)
@@ -98,22 +123,26 @@ describe("POST /api/score/update", () => {
 
       expect(response.status).toBe(200);
       expect(response.body.delta).toBe(-30);
-      expect(response.body.newScore).toBe(
-        Math.min(850, Math.max(300, response.body.oldScore - 30)),
-      );
+      expect(response.body.newScore).toBe(470);
     });
 
     it("should clamp newScore to 850 maximum", async () => {
       // 'max-score-user' hashes to a score near 850; delta +15 should clamp
+      mockedQuery.mockResolvedValueOnce({ rows: [{ current_score: 840 }] }); // Old score
+      mockedQuery.mockResolvedValueOnce({ rows: [{ current_score: 850 }] }); // New score (clamped)
+
       const response = await request(app)
         .post("/api/score/update")
         .set("x-api-key", VALID_API_KEY)
         .send({ userId: "user123", repaymentAmount: 100, onTime: true });
 
-      expect(response.body.newScore).toBeLessThanOrEqual(850);
+      expect(response.body.newScore).toBe(850);
     });
 
     it("should return userId and repaymentAmount in the response", async () => {
+      mockedQuery.mockResolvedValueOnce({ rows: [] }); // Old score 500
+      mockedQuery.mockResolvedValueOnce({ rows: [{ current_score: 515 }] });
+
       const response = await request(app)
         .post("/api/score/update")
         .set("x-api-key", VALID_API_KEY)

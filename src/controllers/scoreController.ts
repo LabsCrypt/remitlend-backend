@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import { asyncHandler } from "../middleware/asyncHandler.js";
+import { query } from "../db/connection.js";
 
 // ---------------------------------------------------------------------------
 // Score computation helpers
@@ -19,6 +20,7 @@ function getCreditBand(score: number): CreditBand {
  * Derive a deterministic base score from a userId so that every call to
  * getScore for the same user returns consistent data without a database.
  * Range: 500–850 (typical credit score window).
+ * Deprecated - 24/03/2026
  */
 function baseScore(userId: string): number {
   let hash = 0;
@@ -50,7 +52,11 @@ const LATE_DELTA = -30;
 export const getScore = asyncHandler(async (req: Request, res: Response) => {
   const { userId } = req.params as { userId: string };
 
-  const score = baseScore(userId);
+  const result = await query("SELECT current_score FROM scores WHERE user_id = $1", [
+    userId,
+  ]);
+
+  const score = result.rows.length > 0 ? result.rows[0].current_score : 500;
   const band = getCreditBand(score);
 
   res.json({
@@ -82,11 +88,21 @@ export const updateScore = asyncHandler(async (req: Request, res: Response) => {
     onTime: boolean;
   };
 
-  const oldScore = baseScore(userId);
   const delta = onTime ? ON_TIME_DELTA : LATE_DELTA;
 
-  // Clamp new score within the valid credit-score window [300, 850]
-  const newScore = Math.min(850, Math.max(300, oldScore + delta));
+  // Use UPSERT: Get existing score or start at 500, then apply delta and clamp
+  const result = await query(
+    `INSERT INTO scores (user_id, current_score)
+     VALUES ($1, $2)
+     ON CONFLICT (user_id) 
+     DO UPDATE SET 
+       current_score = LEAST(850, GREATEST(300, scores.current_score + $3)),
+       updated_at = CURRENT_TIMESTAMP
+     RETURNING current_score`,
+    [userId, 500 + delta, delta],
+  );
+
+  const newScore = result.rows[0].current_score;
   const band = getCreditBand(newScore);
 
   res.json({
@@ -94,7 +110,6 @@ export const updateScore = asyncHandler(async (req: Request, res: Response) => {
     userId,
     repaymentAmount,
     onTime,
-    oldScore,
     delta,
     newScore,
     band,

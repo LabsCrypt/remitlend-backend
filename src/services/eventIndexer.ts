@@ -137,12 +137,30 @@ export class EventIndexer {
             e.value,
           ],
         );
+
+        // Update user credit score if it's a repayment
+        if (e.eventType === "LoanRepaid") {
+          await this.updateUserScore(e.borrower, 15); // +15 for repayment
+        }
       }
       await query("COMMIT", []);
     } catch (err) {
       await query("ROLLBACK", []);
       throw err;
     }
+  }
+
+  private async updateUserScore(userId: string, delta: number): Promise<void> {
+    await query(
+      `INSERT INTO scores (user_id, current_score)
+       VALUES ($1, $2)
+       ON CONFLICT (user_id) 
+       DO UPDATE SET 
+         current_score = LEAST(850, GREATEST(300, scores.current_score + $3)),
+         updated_at = CURRENT_TIMESTAMP`,
+      [userId, 500 + delta, delta],
+    );
+    logger.info("Updated user score from indexer", { userId, delta });
   }
 
   private async getIndexerState() {

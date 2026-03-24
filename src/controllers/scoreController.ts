@@ -88,6 +88,12 @@ export const updateScore = asyncHandler(async (req: Request, res: Response) => {
     onTime: boolean;
   };
 
+  // Get old score first for the response
+  const oldResult = await query("SELECT current_score FROM scores WHERE user_id = $1", [
+    userId,
+  ]);
+  const oldScore = oldResult.rows.length > 0 ? oldResult.rows[0].current_score : 500;
+
   const delta = onTime ? ON_TIME_DELTA : LATE_DELTA;
 
   // Use UPSERT: Get existing score or start at 500, then apply delta and clamp
@@ -110,6 +116,7 @@ export const updateScore = asyncHandler(async (req: Request, res: Response) => {
     userId,
     repaymentAmount,
     onTime,
+    oldScore,
     delta,
     newScore,
     band,

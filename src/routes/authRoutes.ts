@@ -5,6 +5,10 @@ import {
   login,
   verify,
 } from "../controllers/authController.js";
+import {
+  challengeRateLimiter,
+  verifyRateLimiter,
+} from "../middleware/rateLimiter.js";
 import { requireJwtAuth } from "../middleware/jwtAuth.js";
 import { validateBody } from "../middleware/validation.js";
 
@@ -20,9 +24,14 @@ const loginSchema = z.object({
   signature: z.string().min(1, "Signature is required"),
 });
 
-router.post("/challenge", validateBody(challengeSchema), requestChallenge);
+router.post(
+  "/challenge",
+  challengeRateLimiter,
+  validateBody(challengeSchema),
+  requestChallenge,
+);
 
-router.post("/login", validateBody(loginSchema), login);
+router.post("/login", verifyRateLimiter, validateBody(loginSchema), login);
 
 router.get("/verify", requireJwtAuth, verify);
 

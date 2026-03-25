@@ -33,7 +33,7 @@ const swaggerDefinition = {
         scheme: "bearer",
         bearerFormat: "JWT",
         description:
-          "JWT from POST /api/auth/verify after wallet challenge; identifies the Stellar `publicKey`",
+          "JWT issued by POST /api/auth/login after POST /api/auth/challenge + signed message; use on GET /api/auth/verify and protected routes. Payload includes Stellar `publicKey`.",
       },
     },
     schemas: {

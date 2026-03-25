@@ -13,6 +13,7 @@ import simulationRoutes from "./routes/simulationRoutes.js";
 import scoreRoutes from "./routes/scoreRoutes.js";
 import loanRoutes from "./routes/loanRoutes.js";
 import indexerRoutes from "./routes/indexerRoutes.js";
+import adminRoutes from "./routes/adminRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
 import swaggerUi from "swagger-ui-express";
 import { swaggerSpec } from "./config/swagger.js";
@@ -89,6 +90,7 @@ app.use("/api", simulationRoutes);
 app.use("/api/score", scoreRoutes);
 app.use("/api/loans", loanRoutes);
 app.use("/api/indexer", indexerRoutes);
+app.use("/api/admin", adminRoutes);
 app.use("/api/auth", authRoutes);
 
 // ── Diagnostic / Test Routes ─────────────────────────────────────

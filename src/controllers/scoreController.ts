@@ -16,20 +16,6 @@ function getCreditBand(score: number): CreditBand {
   return "Poor";
 }
 
-/**
- * Derive a deterministic base score from a userId so that every call to
- * getScore for the same user returns consistent data without a database.
- * Range: 500–850 (typical credit score window).
- * Deprecated - 24/03/2026
- */
-function baseScore(userId: string): number {
-  let hash = 0;
-  for (let i = 0; i < userId.length; i++) {
-    hash = (hash * 31 + userId.charCodeAt(i)) >>> 0;
-  }
-  return 500 + (hash % 351); // [500, 850]
-}
-
 // ---------------------------------------------------------------------------
 // Score delta constants (tunable)
 // ---------------------------------------------------------------------------
@@ -52,9 +38,10 @@ const LATE_DELTA = -30;
 export const getScore = asyncHandler(async (req: Request, res: Response) => {
   const { userId } = req.params as { userId: string };
 
-  const result = await query("SELECT current_score FROM scores WHERE user_id = $1", [
-    userId,
-  ]);
+  const result = await query(
+    "SELECT current_score FROM scores WHERE user_id = $1",
+    [userId],
+  );
 
   const score = result.rows.length > 0 ? result.rows[0].current_score : 500;
   const band = getCreditBand(score);
@@ -89,10 +76,12 @@ export const updateScore = asyncHandler(async (req: Request, res: Response) => {
   };
 
   // Get old score first for the response
-  const oldResult = await query("SELECT current_score FROM scores WHERE user_id = $1", [
-    userId,
-  ]);
-  const oldScore = oldResult.rows.length > 0 ? oldResult.rows[0].current_score : 500;
+  const oldResult = await query(
+    "SELECT current_score FROM scores WHERE user_id = $1",
+    [userId],
+  );
+  const oldScore =
+    oldResult.rows.length > 0 ? oldResult.rows[0].current_score : 500;
 
   const delta = onTime ? ON_TIME_DELTA : LATE_DELTA;
 

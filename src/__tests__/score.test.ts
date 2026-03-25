@@ -1,5 +1,6 @@
 import request from "supertest";
 import { jest } from "@jest/globals";
+import express from "express";
 
 // Setup mocks BEFORE importing the app or the module under test
 const mockQuery = jest.fn();
@@ -10,8 +11,10 @@ jest.unstable_mockModule("../db/connection.js", () => ({
 }));
 
 // Use dynamic imports to ensure mocks are applied
-const { query } = (await import("../db/connection.js")) as any;
-const { default: app } = (await import("../app.js")) as any;
+const { query } = (await import("../db/connection.js")) as { query: unknown };
+const { default: app } = (await import("../app.js")) as {
+  default: express.Application;
+};
 
 const mockedQuery = query as jest.Mock;
 const VALID_API_KEY = "test-internal-key";
@@ -31,7 +34,7 @@ afterAll(() => {
 describe("GET /api/score/:userId", () => {
   it("should return a score for a valid userId", async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [{ current_score: 750 }] });
-    
+
     const response = await request(app).get("/api/score/user123");
 
     expect(response.status).toBe(200);
@@ -44,7 +47,7 @@ describe("GET /api/score/:userId", () => {
 
   it("should return the same score for the same userId", async () => {
     mockedQuery.mockResolvedValue({ rows: [{ current_score: 600 }] });
-    
+
     const r1 = await request(app).get("/api/score/alice");
     const r2 = await request(app).get("/api/score/alice");
 
@@ -53,7 +56,7 @@ describe("GET /api/score/:userId", () => {
 
   it("should return 500 if user not found", async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [] });
-    
+
     const response = await request(app).get("/api/score/newuser");
 
     expect(response.status).toBe(200);

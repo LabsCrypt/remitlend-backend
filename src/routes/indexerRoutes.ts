@@ -112,7 +112,7 @@ router.get("/events/loan/:loanId", getLoanEvents);
  *         name: eventType
  *         schema:
  *           type: string
- *           enum: [LoanRequested, LoanApproved, LoanRepaid]
+ *           enum: [LoanRequested, LoanApproved, LoanRepaid, LoanDefaulted]
  *     responses:
  *       200:
  *         description: Events retrieved successfully
@@ -145,7 +145,7 @@ router.get("/events/recent", getRecentEvents);
  *                 type: array
  *                 items:
  *                   type: string
- *                   enum: [LoanRequested, LoanApproved, LoanRepaid]
+ *                   enum: [LoanRequested, LoanApproved, LoanRepaid, LoanDefaulted]
  *               secret:
  *                 type: string
  *     responses:

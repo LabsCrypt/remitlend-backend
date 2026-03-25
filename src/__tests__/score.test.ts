@@ -1,8 +1,12 @@
 import request from "supertest";
 import { jest } from "@jest/globals";
 
+type MockQueryResult = { rows: unknown[]; rowCount?: number };
+
 // Setup mocks BEFORE importing the app or the module under test
-const mockQuery = jest.fn();
+const mockQuery: jest.MockedFunction<
+  (text: string, params?: unknown[]) => Promise<MockQueryResult>
+> = jest.fn();
 jest.unstable_mockModule("../db/connection.js", () => ({
   query: mockQuery,
   getClient: jest.fn(),
@@ -10,10 +14,10 @@ jest.unstable_mockModule("../db/connection.js", () => ({
 }));
 
 // Use dynamic imports to ensure mocks are applied
-const { query } = (await import("../db/connection.js")) as any;
-const { default: app } = (await import("../app.js")) as any;
+await import("../db/connection.js");
+const { default: app } = await import("../app.js");
 
-const mockedQuery = query as jest.Mock;
+const mockedQuery = mockQuery;
 const VALID_API_KEY = "test-internal-key";
 
 beforeAll(() => {

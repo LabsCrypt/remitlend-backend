@@ -58,7 +58,10 @@ export const requireWalletOwnership = (
   _res: Response,
   next: NextFunction,
 ): void => {
-  const requestedWallet = req.params.wallet || req.body.wallet;
+  const requestedWallet =
+    req.params.borrower ??
+    req.params.wallet ??
+    (req.body as { wallet?: string } | undefined)?.wallet;
   const authenticatedWallet = req.user?.publicKey;
 
   if (!authenticatedWallet) {
@@ -74,6 +77,30 @@ export const requireWalletOwnership = (
   }
 
   next();
+};
+
+/**
+ * Ensures a path param (e.g. `userId` on GET /score/:userId) matches the JWT wallet.
+ */
+export const requireWalletParamMatchesJwt = (paramName: string) => {
+  return (req: Request, _res: Response, next: NextFunction): void => {
+    const requested = req.params[paramName];
+    const authenticatedWallet = req.user?.publicKey;
+
+    if (!authenticatedWallet) {
+      throw AppError.unauthorized("Authentication required");
+    }
+
+    if (!requested) {
+      throw AppError.badRequest(`${paramName} is required`);
+    }
+
+    if (requested !== authenticatedWallet) {
+      throw AppError.forbidden("You are not authorized to access this resource");
+    }
+
+    next();
+  };
 };
 
 export const requireBorrower = (

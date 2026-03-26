@@ -96,7 +96,9 @@ export const requireWalletParamMatchesJwt = (paramName: string) => {
     }
 
     if (requested !== authenticatedWallet) {
-      throw AppError.forbidden("You are not authorized to access this resource");
+      throw AppError.forbidden(
+        "You are not authorized to access this resource",
+      );
     }
 
     next();

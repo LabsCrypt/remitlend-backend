@@ -42,7 +42,7 @@ export const errorHandler = (
         stack: err.stack,
       });
       Sentry.captureException(err, {
-        extra: { path: _req.path, method: _req.method },
+        extra: { path: req.path, method: req.method },
       });
     }
 

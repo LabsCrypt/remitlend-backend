@@ -53,12 +53,16 @@ Apply schema migrations from the `backend` directory:
 
 ```bash
 npm run migrate:up
+# Alias (same command style as issue tickets)
+npm run migrate up
 ```
 
 Rollback last batch (when needed):
 
 ```bash
 npm run migrate:down
+# Alias
+npm run migrate down
 ```
 
 Core tables are created by these migrations (run in filename order):
@@ -99,7 +103,9 @@ npm run dev          # Start dev server with hot reload
 
 # Database
 npm run migrate:up   # Apply migrations (requires DATABASE_URL)
+npm run migrate up   # Alias for migrate:up
 npm run migrate:down # Roll back last migration batch
+npm run migrate down # Alias for migrate:down
 
 # Production
 npm run build        # Compile TypeScript to JavaScript

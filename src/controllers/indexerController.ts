@@ -162,7 +162,7 @@ export const getBorrowerEvents = async (req: Request, res: Response) => {
       [borrower],
       "WHERE borrower = $1",
     );
-    console.log("DEBUG getBorrowerEvents after filters", {
+    logger.debug("getBorrowerEvents after filters", {
       params,
       whereClause,
     });
@@ -177,7 +177,7 @@ export const getBorrowerEvents = async (req: Request, res: Response) => {
       ORDER BY id ASC
       LIMIT $${params.length + 2}
     `;
-    console.log("DEBUG getBorrowerEvents query", {
+    logger.debug("getBorrowerEvents query", {
       queryText,
       queryParams: [...params, cursorValue, limit + 1],
     });
@@ -187,7 +187,7 @@ export const getBorrowerEvents = async (req: Request, res: Response) => {
       query(`SELECT COUNT(*) as count FROM loan_events ${whereClause}`, params),
     ]);
 
-    console.log("DEBUG getBorrowerEvents after query", { result, totalCount });
+    logger.debug("getBorrowerEvents after query", { result, totalCount });
     const hasNext = result.rows.length > limit;
     const events = hasNext ? result.rows.slice(0, limit) : result.rows;
     const lastEvent = events.length > 0 ? events[events.length - 1] : undefined;
@@ -322,7 +322,7 @@ export const getRecentEvents = async (req: Request, res: Response) => {
       query(`SELECT COUNT(*) as count FROM loan_events ${whereClause}`, params),
     ]);
 
-    console.log("DEBUG getRecentEvents", {
+    logger.debug("getRecentEvents", {
       queryResult: result.rows,
       countResult: totalCount.rows,
     });

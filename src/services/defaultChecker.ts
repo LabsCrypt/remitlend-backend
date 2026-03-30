@@ -83,6 +83,23 @@ async function mapConcurrent<T, R>(items: T[], limit: number, fn: (item: T) => P
   return results;
 }
 
+async function mapConcurrent<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let currentIndex = 0;
+  const worker = async () => {
+    while (currentIndex < items.length) {
+      const index = currentIndex++;
+      results[index] = await fn(items[index]);
+    }
+  };
+  const workers = [];
+  for (let i = 0; i < Math.min(limit, items.length); i++) {
+    workers.push(worker());
+  }
+  await Promise.all(workers);
+  return results;
+}
+
 export class DefaultChecker {
   private contractId: string;
   private termLedgers: number;
@@ -506,6 +523,13 @@ export class DefaultChecker {
 
       return result;
     });
+
+      return result;
+    });
+
+    const loansChecked = targetIds.length;
+    const successfulSubmissions = batchResults.filter((b) => !b.error && b.txHash).length;
+    const failedSubmissions = batchResults.filter((b) => b.error || !b.txHash).length;
 
     const loansChecked = targetIds.length;
     const successfulSubmissions = batchResults.filter((b) => !b.error && b.txHash).length;

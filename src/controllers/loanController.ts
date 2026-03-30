@@ -403,6 +403,14 @@ export const requestLoan = asyncHandler(async (req: Request, res: Response) => {
     );
   }
 
+  const poolBalance = await sorobanService.getPoolBalance();
+  if (amount > poolBalance) {
+    throw AppError.badRequest(
+      "Insufficient pool liquidity to cover this loan",
+      ErrorCode.INSUFFICIENT_BALANCE,
+    );
+  }
+
   const result = await sorobanService.buildRequestLoanTx(
     borrowerPublicKey,
     amount,

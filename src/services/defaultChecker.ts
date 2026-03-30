@@ -478,9 +478,13 @@ export class DefaultChecker {
       });
     }
 
+    const loansChecked = targetIds.length;
+    const successfulSubmissions = batches.filter((b) => !b.error && !b.timedOut).length;
+    const failedSubmissions = batches.filter((b) => b.error !== undefined || b.timedOut === true).length;
+
     logger.info("default_check.run.complete", {
       runId,
-      batches: batchResults.length,
+      batches: batches.length,
       loansChecked,
       successfulSubmissions,
       failedSubmissions,
@@ -495,7 +499,7 @@ export class DefaultChecker {
       currentLedger,
       termLedgers: this.termLedgers,
       overdueCount: stats.overdueCount,
-      loansChecked: targetIds.length,
+      loansChecked,
       successfulSubmissions,
       failedSubmissions,
       ...(stats.oldestDueLedger !== undefined
@@ -504,7 +508,7 @@ export class DefaultChecker {
       ...(stats.ledgersPastOldestDue !== undefined
         ? { ledgersPastOldestDue: stats.ledgersPastOldestDue }
         : {}),
-      batches: batchResults,
+      batches,
     };
     } finally {
       // Always release the lock, even if the run failed

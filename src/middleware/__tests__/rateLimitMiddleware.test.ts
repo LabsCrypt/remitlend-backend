@@ -1,10 +1,8 @@
 import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 import type { Request, Response, NextFunction } from "express";
-import { createRateLimitMiddleware, scoreUpdateRateLimit } from "../rateLimitMiddleware.js";
-import { rateLimitService } from "../../services/rateLimitService.js";
 import { AppError } from "../../errors/AppError.js";
 
-// Mock the rate limit service
+// Mock the rate limit service before importing middleware that depends on it
 jest.unstable_mockModule("../../services/rateLimitService.js", () => ({
   rateLimitService: {
     checkRateLimit: jest.fn(),
@@ -13,7 +11,9 @@ jest.unstable_mockModule("../../services/rateLimitService.js", () => ({
   },
 }));
 
-const mockRateLimitService = (await import("../../services/rateLimitService.js")).rateLimitService as jest.Mocked<typeof rateLimitService>;
+const { createRateLimitMiddleware, scoreUpdateRateLimit } = await import("../rateLimitMiddleware.js");
+const { rateLimitService } = await import("../../services/rateLimitService.js");
+const mockRateLimitService = rateLimitService as jest.Mocked<typeof rateLimitService>;
 
 describe("Rate Limit Middleware", () => {
   let mockRequest: Partial<Request>;

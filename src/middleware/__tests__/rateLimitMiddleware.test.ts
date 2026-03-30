@@ -9,6 +9,10 @@ jest.unstable_mockModule("../../services/rateLimitService.js", () => ({
     resetRateLimit: jest.fn(),
     getRateLimitStatus: jest.fn(),
   },
+  SCORE_UPDATE_RATE_LIMIT: {
+    maxRequests: 5,
+    windowSeconds: 86400,
+  },
 }));
 
 const { createRateLimitMiddleware, scoreUpdateRateLimit } = await import("../rateLimitMiddleware.js");

@@ -14,11 +14,15 @@ import {
   getStellarNetworkPassphrase,
 } from "../config/stellar.js";
 
+import { cacheService } from "./cacheService.js";
+
 /**
  * Mirrors `LoanManager::DEFAULT_TERM_LEDGERS` in `contracts/loan_manager/src/lib.rs`.
  * Used to estimate on-chain due ledgers from indexed `LoanApproved` events.
  */
 const DEFAULT_TERM_LEDGERS = 17_280;
+const LOCK_KEY = "default_checker:running";
+const LOCK_TTL_SECONDS = 600; // 10 minutes - prevents stuck locks from crashed runs
 
 export interface DefaultCheckBatchResult {
   loanIds: number[];
@@ -26,6 +30,7 @@ export interface DefaultCheckBatchResult {
   submitStatus?: string;
   txStatus?: string;
   error?: string;
+  timedOut?: boolean;
 }
 
 export interface DefaultCheckRunResult {
@@ -33,6 +38,9 @@ export interface DefaultCheckRunResult {
   currentLedger: number;
   termLedgers: number;
   overdueCount: number;
+  loansChecked: number;
+  successfulSubmissions: number;
+  failedSubmissions: number;
   oldestDueLedger?: number;
   ledgersPastOldestDue?: number;
   batches: DefaultCheckBatchResult[];
@@ -62,6 +70,7 @@ export class DefaultChecker {
   private contractId: string;
   private termLedgers: number;
   private batchSize: number;
+  private batchTimeoutMs: number;
   private maxLoansPerRun: number;
   private pollAttempts: number;
   private pollSleepMs: number;
@@ -73,6 +82,10 @@ export class DefaultChecker {
       DEFAULT_TERM_LEDGERS,
     );
     this.batchSize = parsePositiveInt(process.env.DEFAULT_CHECK_BATCH_SIZE, 25);
+    this.batchTimeoutMs = parsePositiveInt(
+      process.env.DEFAULT_CHECK_BATCH_TIMEOUT_MS,
+      5 * 60 * 1000,
+    );
     this.maxLoansPerRun = parsePositiveInt(
       process.env.DEFAULT_CHECK_MAX_LOANS_PER_RUN,
       500,
@@ -298,14 +311,120 @@ export class DefaultChecker {
     };
   }
 
+  private async submitCheckDefaultsWithTimeout(
+    server: rpc.Server,
+    signer: Keypair,
+    passphrase: string,
+    loanIds: number[],
+  ): Promise<DefaultCheckBatchResult> {
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+
+    const timeoutPromise = new Promise<DefaultCheckBatchResult>((resolve) => {
+      timeoutHandle = setTimeout(() => {
+        resolve({
+          loanIds,
+          timedOut: true,
+          error: `batch timed out after ${this.batchTimeoutMs}ms`,
+        });
+      }, this.batchTimeoutMs);
+      timeoutHandle.unref?.();
+    });
+
+    const submissionPromise: Promise<DefaultCheckBatchResult> = this.submitCheckDefaults(
+      server,
+      signer,
+      passphrase,
+      loanIds,
+    ).catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      return {
+        loanIds,
+        error: `default check batch failed: ${message}`,
+      } satisfies DefaultCheckBatchResult;
+    });
+
+    const result = await Promise.race([submissionPromise, timeoutPromise]);
+
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+
+    if (result.timedOut) {
+      logger.warn("Default check batch timed out", {
+        loanIds,
+        timeoutMs: this.batchTimeoutMs,
+      });
+    }
+
+    return result;
+  }
+
+  /**
+   * Acquires a distributed lock using Redis SET NX with TTL.
+   * Returns true if lock acquired, false if another instance is running.
+   */
+  private async acquireLock(): Promise<boolean> {
+    try {
+      const lockValue = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      const acquired = await cacheService.setNotExists(LOCK_KEY, lockValue, LOCK_TTL_SECONDS);
+      return acquired;
+    } catch (error) {
+      logger.error("Failed to acquire default checker lock", { error });
+      return false;
+    }
+  }
+
+  /**
+   * Releases the distributed lock.
+   */
+  private async releaseLock(): Promise<void> {
+    try {
+      await cacheService.delete(LOCK_KEY);
+    } catch (error) {
+      logger.error("Failed to release default checker lock", { error });
+    }
+  }
+
+  /**
+   * Processes a single batch of loans for default checking.
+   */
+  private async processBatch(
+    server: rpc.Server,
+    signer: Keypair,
+    passphrase: string,
+    batch: number[],
+    runId: string,
+  ): Promise<DefaultCheckBatchResult> {
+    const result = await this.submitCheckDefaults(server, signer, passphrase, batch);
+
+    logger.info("default_check.batch", {
+      runId,
+      loanIds: result.loanIds,
+      txHash: result.txHash,
+      submitStatus: result.submitStatus,
+      txStatus: result.txStatus,
+      error: result.error,
+    });
+
+    return result;
+  }
+
   /**
    * Runs default checks for either:
    * - explicit `loanIds` (validated + de-duped), or
    * - all overdue loans discovered from `loan_events` (bounded by env limits).
    */
-  async checkOverdueLoans(loanIds?: number[]): Promise<DefaultCheckRunResult> {
-    const runId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    const { signer, server, passphrase } = this.assertConfigured();
+  async checkOverdueLoans(loanIds?: number[]): Promise<DefaultCheckRunResult | null> {
+    // Try to acquire distributed lock to prevent overlapping runs
+    const lockAcquired = await this.acquireLock();
+    if (!lockAcquired) {
+      logger.warn("Default checker run skipped - another instance is already running");
+      return null;
+    }
+
+    try {
+      const runId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      const { signer, server, passphrase } = this.assertConfigured();
 
     const latest = await server.getLatestLedger();
     const currentLedger = latest.sequence;
@@ -328,6 +447,7 @@ export class DefaultChecker {
       currentLedger,
       termLedgers: this.termLedgers,
       batchSize: this.batchSize,
+      batchTimeoutMs: this.batchTimeoutMs,
       maxLoansPerRun: this.maxLoansPerRun,
       overdueCount: stats.overdueCount,
       oldestDueLedger: stats.oldestDueLedger,
@@ -339,7 +459,7 @@ export class DefaultChecker {
     const batches: DefaultCheckBatchResult[] = [];
     for (const batch of chunk(targetIds, this.batchSize)) {
       if (!batch.length) continue;
-      const result = await this.submitCheckDefaults(
+      const result = await this.submitCheckDefaultsWithTimeout(
         server,
         signer,
         passphrase,
@@ -354,12 +474,20 @@ export class DefaultChecker {
         submitStatus: result.submitStatus,
         txStatus: result.txStatus,
         error: result.error,
+        timedOut: result.timedOut,
       });
     }
+
+    const loansChecked = targetIds.length;
+    const successfulSubmissions = batches.filter((b) => !b.error && !b.timedOut).length;
+    const failedSubmissions = batches.filter((b) => b.error !== undefined || b.timedOut === true).length;
 
     logger.info("default_check.run.complete", {
       runId,
       batches: batches.length,
+      loansChecked,
+      successfulSubmissions,
+      failedSubmissions,
       currentLedger,
       overdueCount: stats.overdueCount,
       oldestDueLedger: stats.oldestDueLedger,
@@ -371,6 +499,9 @@ export class DefaultChecker {
       currentLedger,
       termLedgers: this.termLedgers,
       overdueCount: stats.overdueCount,
+      loansChecked,
+      successfulSubmissions,
+      failedSubmissions,
       ...(stats.oldestDueLedger !== undefined
         ? { oldestDueLedger: stats.oldestDueLedger }
         : {}),
@@ -379,6 +510,10 @@ export class DefaultChecker {
         : {}),
       batches,
     };
+    } finally {
+      // Always release the lock, even if the run failed
+      await this.releaseLock();
+    }
   }
 }
 

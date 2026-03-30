@@ -224,7 +224,7 @@ class EventStreamService {
         for (const clientInfo of clients) {
           try {
             // Verify user identity before sending (fixes #471)
-            this.sendEvent(clientInfo.res, event, clientInfo.userKey, event.borrower);
+            this.sendEvent(clientInfo.res, event);
           } catch (err) {
             logger.error("SSE write error (borrower)", {
               borrower: event.borrower,
@@ -275,7 +275,7 @@ class EventStreamService {
 
   closeAllConnections(message = "Server shutting down"): void {
     this.stopHeartbeat();
-    const clients = new Set<SseClient>();
+    const clients = new Set<ClientInfo>();
 
     for (const borrowerClientSet of borrowerClients.values()) {
       for (const clientInfo of borrowerClientSet) {

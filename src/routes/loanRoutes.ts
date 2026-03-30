@@ -4,6 +4,7 @@ import {
   getBorrowerLoans,
   getLoanDetails,
   getLoanAmortizationSchedule,
+  previewLoanAmortizationSchedule,
   requestLoan,
   repayLoan,
   submitTransaction,
@@ -18,6 +19,7 @@ import { validate, validateBody, validateParams } from "../middleware/validation
 import { idempotencyMiddleware } from "../middleware/idempotency.js";
 import { borrowerParamSchema } from "../schemas/stellarSchemas.js";
 import {
+  previewAmortizationSchema,
   requestLoanSchema,
   repayLoanSchema,
   repayLoanParamsSchema,
@@ -27,6 +29,13 @@ import {
 const router = Router();
 
 router.get("/config", getLoanConfigEndpoint);
+
+router.post(
+  "/amortization-preview",
+  requireJwtAuth,
+  validateBody(previewAmortizationSchema),
+  previewLoanAmortizationSchedule,
+);
 
 /**
  * @swagger

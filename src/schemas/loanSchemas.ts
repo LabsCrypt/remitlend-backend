@@ -13,6 +13,11 @@ export const repayLoanSchema = z.object({
   borrowerPublicKey: z.string().min(1, "borrowerPublicKey is required"),
 });
 
+export const previewAmortizationSchema = z.object({
+  amount: positiveAmountSchema,
+  termDays: z.union([z.literal(30), z.literal(60), z.literal(90)]),
+});
+
 export const repayLoanParamsSchema = z.object({
   loanId: z.coerce.number().int().positive("Loan ID must be a positive integer"),
 });

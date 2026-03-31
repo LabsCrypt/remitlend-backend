@@ -210,7 +210,7 @@ describe("POST /api/loans/submit", () => {
   it("should reject unauthenticated requests", async () => {
     const response = await request(app)
       .post("/api/loans/submit")
-      .send({ signedTxXdr: "signed-xdr" });
+      .send({ signedTxXdr: "c2lnbmVkLXhkcg==" });
     expect(response.status).toBe(401);
   });
 
@@ -223,7 +223,7 @@ describe("POST /api/loans/submit", () => {
     const response = await request(app)
       .post("/api/loans/submit")
       .set(bearer(TEST_BORROWER))
-      .send({ signedTxXdr: "signed-xdr-data" });
+      .send({ signedTxXdr: "c2lnbmVkLXhkci1kYXRh" });
 
     expect(response.status).toBe(200);
     expect(response.body.success).toBe(true);
@@ -506,7 +506,7 @@ describe("POST /api/loans/:loanId/submit", () => {
     const response = await request(app)
       .post("/api/loans/1/submit")
       .set(bearer(TEST_BORROWER))
-      .send({ signedTxXdr: "signed-repay-xdr" });
+      .send({ signedTxXdr: "c2lnbmVkLXJlcGF5LXhkcg==" });
 
     expect(response.status).toBe(200);
     expect(response.body.txHash).toBe("repay-hash-456");

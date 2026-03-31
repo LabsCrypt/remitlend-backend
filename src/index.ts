@@ -8,12 +8,7 @@ validateEnvVars();
 import { initSentry } from "./config/sentry.js";
 initSentry();
 
-let app;
-if (process.env.NODE_ENV === "test") {
-  app = (await import("./app.js")).default;
-} else {
-  app = (await import("./app.with-swagger.js")).default;
-}
+const app = (await import("./app.js")).default;
 import logger from "./utils/logger.js";
 import pool from "./db/connection.js";
 import { startIndexer, stopIndexer } from "./services/indexerManager.js";

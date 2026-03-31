@@ -362,6 +362,72 @@ describe("GET /api/loans/:loanId/amortization-schedule", () => {
   });
 });
 
+describe("POST /api/loans/amortization-preview", () => {
+  const originalMinScore = process.env.LOAN_MIN_SCORE;
+  const originalMaxAmount = process.env.LOAN_MAX_AMOUNT;
+  const originalInterest = process.env.LOAN_INTEREST_RATE_PERCENT;
+  const originalThreshold = process.env.CREDIT_SCORE_THRESHOLD;
+
+  beforeEach(() => {
+    process.env.LOAN_MIN_SCORE = "500";
+    process.env.LOAN_MAX_AMOUNT = "50000";
+    process.env.LOAN_INTEREST_RATE_PERCENT = "12";
+    process.env.CREDIT_SCORE_THRESHOLD = "600";
+  });
+
+  afterEach(() => {
+    if (originalMinScore === undefined) {
+      delete process.env.LOAN_MIN_SCORE;
+    } else {
+      process.env.LOAN_MIN_SCORE = originalMinScore;
+    }
+
+    if (originalMaxAmount === undefined) {
+      delete process.env.LOAN_MAX_AMOUNT;
+    } else {
+      process.env.LOAN_MAX_AMOUNT = originalMaxAmount;
+    }
+
+    if (originalInterest === undefined) {
+      delete process.env.LOAN_INTEREST_RATE_PERCENT;
+    } else {
+      process.env.LOAN_INTEREST_RATE_PERCENT = originalInterest;
+    }
+
+    if (originalThreshold === undefined) {
+      delete process.env.CREDIT_SCORE_THRESHOLD;
+    } else {
+      process.env.CREDIT_SCORE_THRESHOLD = originalThreshold;
+    }
+  });
+
+  it("should return amortization preview for valid terms", async () => {
+    const response = await request(app)
+      .post("/api/loans/amortization-preview")
+      .set(bearer("GABC123"))
+      .send({ amount: 1000, termDays: 60 });
+
+    expect(response.status).toBe(200);
+    expect(response.body.success).toBe(true);
+    expect(response.body.amortization).toMatchObject({
+      principal: 1000,
+      interestRateBps: 1200,
+      termLedgers: 1036800,
+    });
+    expect(Array.isArray(response.body.amortization.schedule)).toBe(true);
+    expect(response.body.amortization.schedule.length).toBe(2);
+  });
+
+  it("should reject invalid termDays", async () => {
+    const response = await request(app)
+      .post("/api/loans/amortization-preview")
+      .set(bearer("GABC123"))
+      .send({ amount: 1000, termDays: 45 });
+
+    expect(response.status).toBe(400);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // POST /api/loans/:loanId/repay
 // ---------------------------------------------------------------------------

@@ -113,6 +113,31 @@ const buildAmortizationSchedule = (
   };
 };
 
+export const previewLoanAmortizationSchedule = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { amount, termDays } = req.body as {
+      amount: number;
+      termDays: 30 | 60 | 90;
+    };
+
+    const loanConfig = getLoanConfig();
+    const interestRateBps = Math.round(loanConfig.interestRatePercent * 100);
+    const termLedgers = termDays * DEFAULT_TERM_LEDGERS;
+
+    const amortization = buildAmortizationSchedule(
+      amount,
+      interestRateBps,
+      termLedgers,
+      new Date(),
+    );
+
+    res.json({
+      success: true,
+      amortization,
+    });
+  },
+);
+
 /**
  * Get active loans for a borrower
  *

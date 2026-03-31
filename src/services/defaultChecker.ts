@@ -66,6 +66,23 @@ function sleep(ms: number): Promise<void> {
   });
 }
 
+async function mapConcurrent<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let currentIndex = 0;
+  const worker = async () => {
+    while (currentIndex < items.length) {
+      const index = currentIndex++;
+      results[index] = await fn(items[index]!);
+    }
+  };
+  const workers = [];
+  for (let i = 0; i < Math.min(limit, items.length); i++) {
+    workers.push(worker());
+  }
+  await Promise.all(workers);
+  return results;
+}
+
 export class DefaultChecker {
   private contractId: string;
   private termLedgers: number;
@@ -74,6 +91,7 @@ export class DefaultChecker {
   private maxLoansPerRun: number;
   private pollAttempts: number;
   private pollSleepMs: number;
+  private concurrency: number;
 
   constructor() {
     this.contractId = process.env.LOAN_MANAGER_CONTRACT_ID || "";
@@ -97,6 +115,10 @@ export class DefaultChecker {
     this.pollSleepMs = parsePositiveInt(
       process.env.DEFAULT_CHECK_POLL_SLEEP_MS,
       1_000,
+    );
+    this.concurrency = parsePositiveInt(
+      process.env.DEFAULT_CHECK_CONCURRENCY,
+      3,
     );
   }
 
@@ -456,16 +478,14 @@ export class DefaultChecker {
       targetLoanCount: targetIds.length,
     });
 
-    const batches: DefaultCheckBatchResult[] = [];
-    for (const batch of chunk(targetIds, this.batchSize)) {
-      if (!batch.length) continue;
+    const allChunks = chunk(targetIds, this.batchSize).filter(b => b.length > 0);
+    const batchResults = await mapConcurrent(allChunks, this.concurrency, async (batch) => {
       const result = await this.submitCheckDefaultsWithTimeout(
         server,
         signer,
         passphrase,
         batch,
       );
-      batches.push(result);
 
       logger.info("default_check.batch", {
         runId,
@@ -476,15 +496,17 @@ export class DefaultChecker {
         error: result.error,
         timedOut: result.timedOut,
       });
-    }
+
+      return result;
+    });
 
     const loansChecked = targetIds.length;
-    const successfulSubmissions = batches.filter((b) => !b.error && !b.timedOut).length;
-    const failedSubmissions = batches.filter((b) => b.error !== undefined || b.timedOut === true).length;
+    const successfulSubmissions = batchResults.filter((b) => !b.error && b.txHash).length;
+    const failedSubmissions = batchResults.filter((b) => b.error || !b.txHash).length;
 
     logger.info("default_check.run.complete", {
       runId,
-      batches: batches.length,
+      batches: batchResults.length,
       loansChecked,
       successfulSubmissions,
       failedSubmissions,
@@ -508,7 +530,7 @@ export class DefaultChecker {
       ...(stats.ledgersPastOldestDue !== undefined
         ? { ledgersPastOldestDue: stats.ledgersPastOldestDue }
         : {}),
-      batches,
+      batches: batchResults,
     };
     } finally {
       // Always release the lock, even if the run failed

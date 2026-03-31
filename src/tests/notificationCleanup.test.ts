@@ -10,7 +10,8 @@ jest.unstable_mockModule("../db/connection.js", () => ({
 
 // Use dynamic imports TO ENSURE mocks are applied BEFORE the module is loaded
 const { query } = await import("../db/connection.js");
-const { notificationService } = await import("../services/notificationService.js");
+const { notificationService } =
+  await import("../services/notificationService.js");
 
 const mockedQuery = query as jest.MockedFunction<typeof query>;
 

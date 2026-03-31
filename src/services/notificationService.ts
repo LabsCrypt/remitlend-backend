@@ -47,7 +47,9 @@ class NotificationService {
    * Persists a new notification and pushes it to any active SSE subscribers
    * for that user.
    */
-  async createNotification(params: CreateNotificationParams): Promise<Notification> {
+  async createNotification(
+    params: CreateNotificationParams,
+  ): Promise<Notification> {
     const { userId, type, title, message, loanId } = params;
 
     const result = await query(
@@ -181,13 +183,19 @@ class NotificationService {
       );
       const deletedCount = result.rowCount ?? 0;
       if (deletedCount > 0) {
-        logger.info(`Notification cleanup completed: ${deletedCount} rows deleted`, {
-          retentionDays,
-        });
+        logger.info(
+          `Notification cleanup completed: ${deletedCount} rows deleted`,
+          {
+            retentionDays,
+          },
+        );
       }
       return deletedCount;
     } catch (error) {
-      logger.error("Error during notification cleanup", { error, retentionDays });
+      logger.error("Error during notification cleanup", {
+        error,
+        retentionDays,
+      });
       return 0;
     }
   }

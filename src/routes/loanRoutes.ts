@@ -1,9 +1,13 @@
+import { createTestLoan } from "../controllers/loanController.js";
+import { markLoanDefaulted } from "../controllers/loanController.js";
+import { contestDefault } from "../controllers/loanController.js";
 import { Router } from "express";
 import {
   getLoanConfigEndpoint,
   getBorrowerLoans,
   getLoanDetails,
   getLoanAmortizationSchedule,
+  previewLoanAmortizationSchedule,
   requestLoan,
   repayLoan,
   submitTransaction,
@@ -14,13 +18,109 @@ import {
   requireWalletOwnership,
 } from "../middleware/jwtAuth.js";
 import { requireLoanBorrowerAccess } from "../middleware/loanAccess.js";
-import { validate } from "../middleware/validation.js";
+import {
+  validate,
+  validateBody,
+  validateParams,
+} from "../middleware/validation.js";
 import { idempotencyMiddleware } from "../middleware/idempotency.js";
 import { borrowerParamSchema } from "../schemas/stellarSchemas.js";
+import {
+  previewAmortizationSchema,
+  requestLoanSchema,
+  repayLoanSchema,
+  repayLoanParamsSchema,
+  submitTxSchema,
+} from "../schemas/loanSchemas.js";
+
+
+
+
 
 const router = Router();
 
+// TEST/DEV ONLY: Create a loan directly for test setup
+if (process.env.NODE_ENV === "test" || process.env.NODE_ENV === "development") {
+  router.post("/", requireJwtAuth, createTestLoan);
+}
+
+// TEST/DEV ONLY: Mark a loan as defaulted for test setup
+if (process.env.NODE_ENV === "test" || process.env.NODE_ENV === "development") {
+  router.post(
+    "/:loanId/mark-defaulted",
+    requireJwtAuth,
+    requireLoanBorrowerAccess,
+    markLoanDefaulted,
+  );
+}
+
+// TEST/DEV ONLY: Mark a loan as defaulted for test setup
+if (process.env.NODE_ENV === "test" || process.env.NODE_ENV === "development") {
+  router.post(
+    "/:loanId/mark-defaulted",
+    requireJwtAuth,
+    requireLoanBorrowerAccess,
+    markLoanDefaulted,
+  );
+}
+
+
 router.get("/config", getLoanConfigEndpoint);
+
+router.post(
+  "/amortization-preview",
+  requireJwtAuth,
+  validateBody(previewAmortizationSchema),
+  previewLoanAmortizationSchedule,
+);
+
+/**
+ * @swagger
+ * /loans/{loanId}/contest-default:
+ *   post:
+ *     summary: Contest a defaulted loan
+ *     description: >
+ *       Allows a borrower to contest a defaulted loan, moving it to disputed status and logging the dispute.
+ *     tags: [Loans]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: loanId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Loan ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - reason
+ *             properties:
+ *               reason:
+ *                 type: string
+ *                 description: Reason for contesting the default
+ *     responses:
+ *       200:
+ *         description: Dispute submitted successfully
+ *       400:
+ *         description: Validation error
+ *       401:
+ *         description: Missing or invalid Bearer token
+ *       403:
+ *         description: Loan exists but belongs to a different borrower
+ *       404:
+ *         description: Loan not found
+ */
+router.post(
+  "/:loanId/contest-default",
+  requireJwtAuth,
+  requireLoanBorrowerAccess,
+  contestDefault,
+);
 
 /**
  * @swagger
@@ -155,7 +255,13 @@ router.get(
  *       401:
  *         description: Missing or invalid Bearer token
  */
-router.post("/request", requireJwtAuth, idempotencyMiddleware, requestLoan);
+router.post(
+  "/request",
+  requireJwtAuth,
+  validateBody(requestLoanSchema),
+  idempotencyMiddleware,
+  requestLoan,
+);
 
 /**
  * @swagger
@@ -191,7 +297,13 @@ router.post("/request", requireJwtAuth, idempotencyMiddleware, requestLoan);
  *       401:
  *         description: Missing or invalid Bearer token
  */
-router.post("/submit", requireJwtAuth, idempotencyMiddleware, submitTransaction);
+router.post(
+  "/submit",
+  requireJwtAuth,
+  validateBody(submitTxSchema),
+  idempotencyMiddleware,
+  submitTransaction,
+);
 
 /**
  * @swagger
@@ -249,6 +361,8 @@ router.post(
   "/:loanId/repay",
   requireJwtAuth,
   requireLoanBorrowerAccess,
+  validateParams(repayLoanParamsSchema),
+  validateBody(repayLoanSchema),
   idempotencyMiddleware,
   repayLoan,
 );
@@ -302,6 +416,8 @@ router.post(
   "/:loanId/submit",
   requireJwtAuth,
   requireLoanBorrowerAccess,
+  validateParams(repayLoanParamsSchema),
+  validateBody(submitTxSchema),
   idempotencyMiddleware,
   submitTransaction,
 );

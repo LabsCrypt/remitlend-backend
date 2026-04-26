@@ -402,6 +402,37 @@ export const getLoanDetails = asyncHandler(
   async (req: Request, res: Response) => {
     const { loanId } = req.params;
 
+    const authenticatedWallet = req.user?.publicKey;
+    const role = req.user?.role;
+    if (!authenticatedWallet) {
+      throw AppError.unauthorized("Authentication required");
+    }
+
+    // Defense-in-depth: verify the authenticated wallet is authorized to view this loan.
+    // Borrowers may only see their own loans. Lenders/admins are explicitly excepted.
+    if (role !== "admin" && role !== "lender") {
+      const borrowerResult = await query(
+        `SELECT borrower FROM loan_events WHERE loan_id = $1 LIMIT 1`,
+        [loanId],
+      );
+      const borrower = borrowerResult.rows[0]?.borrower as string | undefined;
+
+      if (!borrower) {
+        throw AppError.notFound(
+          "Loan not found",
+          ErrorCode.LOAN_NOT_FOUND,
+          "loanId",
+        );
+      }
+
+      if (borrower !== authenticatedWallet) {
+        throw AppError.forbidden(
+          "Not authorized to view this loan",
+          ErrorCode.ACCESS_DENIED,
+        );
+      }
+    }
+
 
     const eventsResult = await query(
       `SELECT event_type, amount, ledger, ledger_closed_at, tx_hash, interest_rate_bps, term_ledgers

@@ -47,7 +47,9 @@ interface LoanEvent extends IndexedLoanEvent {
 
 interface EventIndexerConfig {
   rpcUrl: string;
-  contractId: string;
+  contractId?: string;
+  contractIds?: string[];
+  contractConfigs?: Array<{ contractId: string }>;
   pollIntervalMs?: number;
   batchSize?: number;
 }
@@ -64,7 +66,7 @@ interface ProcessChunkResult {
 
 export class EventIndexer {
   private readonly rpc: SorobanRpc.Server;
-  private readonly contractId: string;
+  private readonly contractIds: string[];
   private readonly pollIntervalMs: number;
   private readonly batchSize: number;
   private readonly quarantineAlertThreshold: number;
@@ -90,14 +92,26 @@ export class EventIndexer {
         throw new Error("contractId is required when using rpcUrl constructor");
       }
       this.rpc = new SorobanRpc.Server(configOrRpcUrl);
-      this.contractId = contractId;
+      this.contractIds = [contractId];
       this.pollIntervalMs = 30_000;
       this.batchSize = 100;
       return;
     }
 
     this.rpc = new SorobanRpc.Server(configOrRpcUrl.rpcUrl);
-    this.contractId = configOrRpcUrl.contractId;
+    const configuredIds = configOrRpcUrl.contractIds ?? [];
+    const configuredFromObjects = (configOrRpcUrl.contractConfigs ?? []).map(
+      (config) => config.contractId,
+    );
+    const normalized = [
+      ...configuredFromObjects,
+      ...configuredIds,
+      ...(configOrRpcUrl.contractId ? [configOrRpcUrl.contractId] : []),
+    ].filter(Boolean);
+    if (normalized.length === 0) {
+      throw new Error("At least one contractId must be configured for indexer");
+    }
+    this.contractIds = [...new Set(normalized)];
     this.pollIntervalMs = configOrRpcUrl.pollIntervalMs ?? 30_000;
     this.batchSize = configOrRpcUrl.batchSize ?? 100;
   }
@@ -335,7 +349,7 @@ export class EventIndexer {
         filters: [
           {
             type: "contract",
-            contractIds: [this.contractId],
+            contractIds: this.contractIds,
           },
         ],
       } as never)) as unknown as {
@@ -426,7 +440,7 @@ export class EventIndexer {
             event.eventId,
             event.eventType,
             event.loanId ?? null,
-            event.borrower || null,
+            event.borrower || "",
             event.amount ?? null,
             event.ledger,
             event.ledgerClosedAt,
@@ -563,6 +577,19 @@ export class EventIndexer {
       loanId = this.decodeLoanId(event.topic[1]);
       if (loanId === undefined) return null;
       amount = this.decodeAmount(event.value);
+    } else if (type === "Deposit" || type === "Withdraw") {
+      if (!event.topic[1]) return null;
+      borrower = this.decodeAddress(event.topic[1]);
+      amount = this.decodeTupleFirstNumericValue(event.value);
+    } else if (type === "Mint" || type === "ScoreUpd" || type === "Seized") {
+      if (!event.topic[1]) return null;
+      borrower = this.decodeAddress(event.topic[1]);
+      if (type === "Mint" || type === "ScoreUpd") {
+        amount = this.decodeAmount(event.value);
+      }
+    } else if (type === "Transfer") {
+      if (!event.topic[2]) return null;
+      borrower = this.decodeAddress(event.topic[2]);
     }
 
     return {
@@ -680,6 +707,18 @@ export class EventIndexer {
     }
   }
 
+  private decodeTupleFirstNumericValue(value: xdr.ScVal): string | undefined {
+    const native = scValToNative(value);
+    if (!Array.isArray(native) || native.length === 0) {
+      return undefined;
+    }
+    const first = native[0];
+    if (typeof first === "bigint" || typeof first === "number") {
+      return first.toString();
+    }
+    return undefined;
+  }
+
   private async quarantineEvent(
     event: SorobanRawEvent,
     error: unknown,
@@ -783,9 +822,21 @@ export class EventIndexer {
         "LoanRepaid",
         "LoanDefaulted",
         "CollateralLiquidated",
+        "Deposit",
+        "Withdraw",
+        "YieldDistributed",
+        "EmergencyWithdraw",
+        "Mint",
+        "ScoreUpd",
+        "Seized",
+        "Transfer",
+        "MntAuth",
+        "MntRev",
         "Paused",
         "Unpaused",
         "MinScoreUpdated",
+        "PoolPaused",
+        "PoolUnpaused",
       ];
 
       return supported.includes(eventType)

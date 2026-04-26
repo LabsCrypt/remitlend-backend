@@ -173,7 +173,7 @@ export class WebhookService {
     }
   }
 
-  private static async retryWebhookDelivery(
+  public static async retryWebhookDelivery(
     deliveryId: number,
     subscriptionId: number,
     callbackUrl: string,

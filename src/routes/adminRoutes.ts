@@ -15,7 +15,10 @@ import {
   reprocessQuarantinedEvents,
   reindexLedgerRange,
 } from "../controllers/indexerController.js";
-import { listLoanDisputes, resolveLoanDispute } from "../controllers/adminDisputeController.js";
+import {
+  listLoanDisputes,
+  resolveLoanDispute,
+} from "../controllers/adminDisputeController.js";
 import { query } from "../db/connection.js";
 
 const router = Router();
@@ -71,7 +74,11 @@ const router = Router();
  *         description: Validation error
  */
 router.get("/loan-disputes", requireApiKey, listLoanDisputes);
-router.post("/loan-disputes/:disputeId/resolve", requireApiKey, resolveLoanDispute);
+router.post(
+  "/loan-disputes/:disputeId/resolve",
+  requireApiKey,
+  resolveLoanDispute,
+);
 
 const checkDefaultsBodySchema = z.object({
   loanIds: z.array(z.number().int().positive()).max(100).optional(),
@@ -277,7 +284,6 @@ router.post(
  */
 router.get("/webhooks", requireApiKey, listWebhookSubscriptions);
 
-
 /**
  * @swagger
  * /admin/webhooks/{id}:
@@ -362,9 +368,9 @@ router.get(
       FROM webhook_deliveries
       WHERE delivered_at IS NULL
     `);
-    
+
     res.json(result.rows[0]);
-  })
+  }),
 );
 
 export default router;

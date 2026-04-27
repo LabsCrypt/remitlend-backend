@@ -26,10 +26,16 @@ jest.unstable_mockModule("../db/connection.js", () => ({
   query: mockQuery,
   getClient: jest.fn(),
   closePool: jest.fn(),
-  withTransaction: jest.fn().mockImplementation(async (fn: (client: any) => Promise<unknown>) => {
-    const client = { query: jest.fn((sql: string, params?: unknown[]) => mockQuery(sql, params ?? [])) };
-    return fn(client);
-  }),
+  withTransaction: jest
+    .fn()
+    .mockImplementation(async (fn: (client: any) => Promise<unknown>) => {
+      const client = {
+        query: jest.fn((sql: string, params?: unknown[]) =>
+          mockQuery(sql, params ?? []),
+        ),
+      };
+      return fn(client);
+    }),
 }));
 
 jest.unstable_mockModule("../services/sorobanService.js", () => ({

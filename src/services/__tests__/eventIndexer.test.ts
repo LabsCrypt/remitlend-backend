@@ -70,7 +70,9 @@ function makeRawRepaidEvent(id = "event-001"): Record<string, unknown> {
 
 /** Run the withTransaction callback immediately using the provided mock client. */
 function stubWithTransaction(mockClient: MockClient): void {
-  mockWithTransaction.mockImplementation(async (fn: TxCallback) => fn(mockClient));
+  mockWithTransaction.mockImplementation(async (fn: TxCallback) =>
+    fn(mockClient),
+  );
 }
 
 // --------------------------------------------------------------------------
@@ -129,8 +131,8 @@ beforeAll(async () => {
 
   jest.unstable_mockModule("../../utils/requestContext.js", () => ({
     createRequestId: jest.fn().mockReturnValue("test-req-id"),
-    runWithRequestContext: jest.fn(
-      (_id: string, fn: () => Promise<unknown>) => fn(),
+    runWithRequestContext: jest.fn((_id: string, fn: () => Promise<unknown>) =>
+      fn(),
     ),
   }));
 
@@ -159,7 +161,10 @@ beforeAll(async () => {
 beforeEach(() => {
   jest.clearAllMocks();
   // Restore default score config after each test
-  mockSorobanGetScoreConfig.mockReturnValue({ repaymentDelta: 10, defaultPenalty: 20 });
+  mockSorobanGetScoreConfig.mockReturnValue({
+    repaymentDelta: 10,
+    defaultPenalty: 20,
+  });
   mockUpdateUserScoresBulk.mockResolvedValue(undefined);
 });
 
@@ -200,8 +205,10 @@ describe("EventIndexer – transaction atomicity via ingestRawEvents", () => {
 
     // Score update called exactly once, with the pinned client
     expect(mockUpdateUserScoresBulk).toHaveBeenCalledTimes(1);
-    const [updates, passedClient] =
-      mockUpdateUserScoresBulk.mock.calls[0] as [Map<string, number>, MockClient];
+    const [updates, passedClient] = mockUpdateUserScoresBulk.mock.calls[0] as [
+      Map<string, number>,
+      MockClient,
+    ];
     expect(passedClient).toBe(mockClient);
     // LoanRepaid for borrower "addr" with repaymentDelta 10
     expect([...updates.entries()]).toEqual([["addr", 10]]);
@@ -286,13 +293,16 @@ describe("EventIndexer – transaction atomicity via ingestRawEvents", () => {
 
     // Should be called once (bulk) not twice
     expect(mockUpdateUserScoresBulk).toHaveBeenCalledTimes(1);
-    const [updates] = mockUpdateUserScoresBulk.mock.calls[0] as [Map<string, number>];
+    const [updates] = mockUpdateUserScoresBulk.mock.calls[0] as [
+      Map<string, number>,
+    ];
     // repaymentDelta: 10, two events → 20
     expect(updates.get("addr")).toBe(20);
   });
 
   it("withTransaction is called — not the legacy query('BEGIN') approach", async () => {
-    const mockQuery = (await import("../../db/connection.js")).query as jest.Mock;
+    const mockQuery = (await import("../../db/connection.js"))
+      .query as jest.Mock;
 
     const mockClient: MockClient = {
       query: jest.fn().mockResolvedValue({ rowCount: 0, rows: [] }),
@@ -302,9 +312,7 @@ describe("EventIndexer – transaction atomicity via ingestRawEvents", () => {
     await makeIndexer().ingestRawEvents([makeRawRepaidEvent()]);
 
     // The pool-level query() should NOT have been called with 'BEGIN'
-    const beginCalls = mockQuery.mock.calls.filter(
-      ([sql]) => sql === "BEGIN",
-    );
+    const beginCalls = mockQuery.mock.calls.filter(([sql]) => sql === "BEGIN");
     expect(beginCalls).toHaveLength(0);
 
     // withTransaction is the entry point instead

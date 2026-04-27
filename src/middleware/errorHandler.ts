@@ -68,7 +68,7 @@ export const errorHandler = (
       });
     }
 
-    const errorResponse: any = {
+    const errorResponse: Record<string, unknown> = {
       success: false,
       // Legacy format for backward compatibility
       message: err.isOperational ? err.message : "Internal server error",

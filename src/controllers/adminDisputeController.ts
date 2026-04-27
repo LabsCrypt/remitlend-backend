@@ -27,11 +27,11 @@ export const resolveLoanDispute = asyncHandler(async (req, res) => {
     adminNote?: string;
   };
 
-  if (!['confirm', 'reverse'].includes(action)) {
-    throw AppError.badRequest('Action must be confirm or reverse');
+  if (!["confirm", "reverse"].includes(action)) {
+    throw AppError.badRequest("Action must be confirm or reverse");
   }
   if (!resolution || resolution.length < 5) {
-    throw AppError.badRequest('Resolution reason required');
+    throw AppError.badRequest("Resolution reason required");
   }
 
   // Get dispute and loan
@@ -40,7 +40,7 @@ export const resolveLoanDispute = asyncHandler(async (req, res) => {
     [disputeId],
   );
   if (disputeResult.rows.length === 0) {
-    throw AppError.notFound('Dispute not found or already resolved');
+    throw AppError.notFound("Dispute not found or already resolved");
   }
   const dispute = disputeResult.rows[0];
 
@@ -50,13 +50,13 @@ export const resolveLoanDispute = asyncHandler(async (req, res) => {
     [resolution, adminNote || null, disputeId],
   );
 
-  if (action === 'confirm') {
-    // Leave loan as defaulted, log event
+  if (action === "confirm") {
+    // Leave loan as defaulted, optionally log event
     await query(
       `INSERT INTO loan_events (loan_id, borrower, event_type, amount, ledger, ledger_closed_at) VALUES ($1, $2, 'DefaultConfirmed', NULL, NULL, NOW())`,
       [dispute.loan_id, dispute.borrower],
     );
-  } else if (action === 'reverse') {
+  } else if (action === "reverse") {
     // Insert event to mark loan as active again
     await query(
       `INSERT INTO loan_events (loan_id, borrower, event_type, amount, ledger, ledger_closed_at) VALUES ($1, $2, 'DefaultReversed', NULL, NULL, NOW())`,
@@ -67,26 +67,26 @@ export const resolveLoanDispute = asyncHandler(async (req, res) => {
   // Notify borrower about dispute resolution
   try {
     const notificationTitle =
-      action === 'confirm'
-        ? 'Dispute Resolved: Default Confirmed'
-        : 'Dispute Resolved: Default Reversed';
+      action === "confirm"
+        ? "Dispute Resolved: Default Confirmed"
+        : "Dispute Resolved: Default Reversed";
 
     const notificationMessage =
-      action === 'confirm'
+      action === "confirm"
         ? `Your loan dispute (Loan #${dispute.loan_id}) has been reviewed and the default status has been confirmed. Admin note: ${adminNote || resolution}`
         : `Your loan dispute (Loan #${dispute.loan_id}) has been reviewed and the default status has been reversed. Your loan is now active. Admin note: ${adminNote || resolution}`;
 
     await notificationService.createNotification({
       userId: dispute.borrower,
-      type: action === 'confirm' ? 'loan_defaulted' : 'repayment_confirmed',
+      type: action === "confirm" ? "loan_defaulted" : "repayment_confirmed",
       title: notificationTitle,
       message: notificationMessage,
       loanId: dispute.loan_id,
     });
   } catch (error) {
     // Log error but don't fail the entire resolution
-    console.error('Failed to send dispute resolution notification:', error);
+    console.error("Failed to send dispute resolution notification:", error);
   }
 
-  res.json({ success: true, message: 'Dispute resolved and borrower notified.' });
+  res.json({ success: true, message: "Dispute resolved and borrower notified." });
 });

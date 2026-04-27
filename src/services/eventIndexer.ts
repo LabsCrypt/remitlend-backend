@@ -31,7 +31,6 @@ const EVENT_TYPE_ALIASES: Record<string, WebhookEventType> = {
   GovFin: "ProposalFinalized",
 };
 
-
 export interface SorobanRawEvent {
   id: string;
   pagingToken: string;
@@ -300,7 +299,10 @@ export class EventIndexer {
 
     return runWithRequestContext(correlationId, async () => {
       if (endLedger < startLedger) {
-        logger.warn("Skipping invalid ledger range", { startLedger, endLedger });
+        logger.warn("Skipping invalid ledger range", {
+          startLedger,
+          endLedger,
+        });
         return {
           lastProcessedLedger: Math.max(startLedger - 1, 0),
           fetchedEvents: 0,
@@ -568,17 +570,23 @@ export class EventIndexer {
 
       const data = scValToNative(event.value);
       if (!Array.isArray(data) || data.length < 2) {
-        throw new Error(`LoanApproved event missing interest_rate_bps or term_ledgers: ${event.id}`);
+        throw new Error(
+          `LoanApproved event missing interest_rate_bps or term_ledgers: ${event.id}`,
+        );
       }
 
       interestRateBps = Number(data[0]);
       termLedgers = Number(data[1]);
 
       if (!Number.isFinite(interestRateBps)) {
-        throw new Error(`LoanApproved event has invalid interest_rate_bps: ${event.id}`);
+        throw new Error(
+          `LoanApproved event has invalid interest_rate_bps: ${event.id}`,
+        );
       }
       if (!Number.isFinite(termLedgers)) {
-        throw new Error(`LoanApproved event has invalid term_ledgers: ${event.id}`);
+        throw new Error(
+          `LoanApproved event has invalid term_ledgers: ${event.id}`,
+        );
       }
     } else if (type === "LoanRepaid") {
       if (!event.topic[1] || !event.topic[2]) return null;

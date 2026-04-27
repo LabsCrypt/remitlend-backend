@@ -172,4 +172,3 @@ describe("Graceful Shutdown", () => {
     exitSpy.mockRestore();
   });
 });
-

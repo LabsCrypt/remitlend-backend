@@ -21,7 +21,7 @@ export async function updateUserScoresBulk(
 
   const params: (string | number)[] = [];
   const userIds: string[] = [];
-  
+
   for (const [userId, delta] of updates) {
     // skip empty user ids
     if (!userId) continue;

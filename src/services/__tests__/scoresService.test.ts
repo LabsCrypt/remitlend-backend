@@ -16,22 +16,41 @@ import {
   beforeAll,
   beforeEach,
 } from "@jest/globals";
+import type { PoolClient } from "../../db/connection.js";
+
+type QueryFn = (sql: string, params?: unknown[]) => Promise<{ rows: never[]; rowCount: number }>;
+type DeleteFn = (key: string) => Promise<void>;
+type GetFn = (key: string) => Promise<null>;
+type SetFn = (key: string, value: unknown) => Promise<void>;
+type SetNotExistsFn = (key: string, value: unknown) => Promise<boolean>;
+type CloseFn = () => Promise<void>;
+
+type MockClient = {
+  query: jest.MockedFunction<QueryFn>;
+};
 
 let updateUserScoresBulk: (
   updates: Map<string, number>,
-  client?: any,
+  client?: PoolClient,
 ) => Promise<void>;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let mockQuery: jest.Mock<any>;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let mockLoggerInfo: jest.Mock<any>;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let mockLoggerError: jest.Mock<any>;
+let mockQuery: jest.MockedFunction<QueryFn>;
+let mockLoggerInfo: jest.Mock;
+let mockLoggerError: jest.Mock;
+let mockCacheDelete: jest.MockedFunction<DeleteFn>;
+let mockCacheGet: jest.MockedFunction<GetFn>;
+let mockCacheSet: jest.MockedFunction<SetFn>;
+let mockCacheSetNotExists: jest.MockedFunction<SetNotExistsFn>;
+let mockCacheClose: jest.MockedFunction<CloseFn>;
 
 beforeAll(async () => {
-  mockQuery = jest.fn<any>().mockResolvedValue({ rows: [], rowCount: 1 }); // eslint-disable-line @typescript-eslint/no-explicit-any
+  mockQuery = jest.fn(async () => ({ rows: [], rowCount: 1 })) as jest.MockedFunction<QueryFn>;
   mockLoggerInfo = jest.fn();
   mockLoggerError = jest.fn();
+  mockCacheDelete = jest.fn(async () => undefined) as jest.MockedFunction<DeleteFn>;
+  mockCacheGet = jest.fn(async () => null) as jest.MockedFunction<GetFn>;
+  mockCacheSet = jest.fn(async () => undefined) as jest.MockedFunction<SetFn>;
+  mockCacheSetNotExists = jest.fn(async () => true) as jest.MockedFunction<SetNotExistsFn>;
+  mockCacheClose = jest.fn(async () => undefined) as jest.MockedFunction<CloseFn>;
 
   jest.unstable_mockModule("../../db/connection.js", () => ({
     query: mockQuery,
@@ -51,11 +70,11 @@ beforeAll(async () => {
 
   jest.unstable_mockModule("../cacheService.js", () => ({
     cacheService: {
-      delete: jest.fn().mockResolvedValue(undefined),
-      get: jest.fn().mockResolvedValue(null),
-      set: jest.fn().mockResolvedValue(undefined),
-      setNotExists: jest.fn().mockResolvedValue(true),
-      close: jest.fn().mockResolvedValue(undefined),
+      delete: mockCacheDelete,
+      get: mockCacheGet,
+      set: mockCacheSet,
+      setNotExists: mockCacheSetNotExists,
+      close: mockCacheClose,
     },
   }));
 
@@ -139,17 +158,20 @@ describe("updateUserScoresBulk", () => {
   describe("with pinned client (inside transaction)", () => {
     it("uses client.query instead of pool query", async () => {
       const mockClient = {
-        query: jest.fn<any>().mockResolvedValue({ rows: [], rowCount: 1 }), // eslint-disable-line @typescript-eslint/no-explicit-any
-      };
+        query: jest.fn(async () => ({ rows: [], rowCount: 1 })),
+      } as MockClient;
 
-      await updateUserScoresBulk(new Map([["user1", 10]]), mockClient as any);
+      await updateUserScoresBulk(
+        new Map([["user1", 10]]),
+        mockClient as unknown as PoolClient,
+      );
 
       // Pool-level query must NOT be called
       expect(mockQuery).not.toHaveBeenCalled();
 
       // Client query IS called
       expect(mockClient.query).toHaveBeenCalledTimes(1);
-      const [sql, params] = mockClient.query.mock.calls[0] as [
+      const [sql, params] = mockClient.query.mock.calls[0] as unknown as [
         string,
         unknown[],
       ];
@@ -159,18 +181,23 @@ describe("updateUserScoresBulk", () => {
 
     it("propagates errors from client.query", async () => {
       const mockClient = {
-        query: jest.fn<any>().mockRejectedValueOnce(new Error("client fail")), // eslint-disable-line @typescript-eslint/no-explicit-any
-      };
+        query: jest.fn(async () => {
+          throw new Error("client fail");
+        }),
+      } as MockClient;
 
       await expect(
-        updateUserScoresBulk(new Map([["user1", 5]]), mockClient as any),
+        updateUserScoresBulk(
+          new Map([["user1", 5]]),
+          mockClient as unknown as PoolClient,
+        ),
       ).rejects.toThrow("client fail");
     });
 
     it("is a noop for empty map even with a client", async () => {
-      const mockClient = { query: jest.fn() };
+      const mockClient = { query: jest.fn() } as MockClient;
 
-      await updateUserScoresBulk(new Map(), mockClient as any);
+      await updateUserScoresBulk(new Map(), mockClient as unknown as PoolClient);
 
       expect(mockClient.query).not.toHaveBeenCalled();
       expect(mockQuery).not.toHaveBeenCalled();

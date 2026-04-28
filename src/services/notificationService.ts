@@ -41,38 +41,41 @@ interface CreateNotificationParams {
 type SseClient = Response;
 const sseClients = new Map<string, Set<SseClient>>();
 
-// SendGrid / Twilio initialization
+// Initialize Twilio client if credentials are provided
 const twilioClient =
-  process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN
+  process.env.TWILIO_ACCOUNT_SID &&
+  process.env.TWILIO_AUTH_TOKEN &&
+  process.env.TWILIO_PHONE_NUMBER
     ? twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
     : null;
 
+// SendGrid / Twilio placeholders (would be imported from a config/provider file in a real app)
 async function sendEmail(email: string, message: string) {
   logger.info(`[Email] Sending to ${email}: ${message}`);
   // await sgMail.send({ to: email, ... });
 }
 
 async function sendSMS(phone: string, message: string) {
-  if (!twilioClient) {
-    logger.warn("[SMS] Twilio not configured, skipping SMS");
-    return;
-  }
-
-  if (!process.env.TWILIO_PHONE_NUMBER) {
-    logger.error("[SMS] TWILIO_PHONE_NUMBER not configured");
+  if (!twilioClient || !process.env.TWILIO_PHONE_NUMBER) {
+    logger.warn(
+      `[SMS] Twilio not configured. Would send to ${phone}: ${message}`,
+    );
     return;
   }
 
   try {
-    await twilioClient.messages.create({
+    const result = await twilioClient.messages.create({
       body: message,
       from: process.env.TWILIO_PHONE_NUMBER,
       to: phone,
     });
-    logger.info(`[SMS] Successfully sent to ${phone}`);
+    logger.info(`[SMS] Sent to ${phone}: ${message}`, { sid: result.sid });
   } catch (error) {
-    logger.error("[SMS] Failed to send message", { phone, error });
-    // Don't throw - we don't want SMS failures to break the notification flow
+    logger.error(`[SMS] Failed to send to ${phone}`, {
+      error: error instanceof Error ? error.message : String(error),
+      phone,
+    });
+    // Swallow error - don't fail the notification creation
   }
 }
 
@@ -97,15 +100,20 @@ class NotificationService {
     this.broadcast(userId, notification);
 
     // Also trigger external notifications
-    await this.notifyUserExternal(userId, message);
+    await this.notifyUserExternal(userId, message, type);
 
     return notification;
   }
 
   /**
    * Sends external notifications (Email/SMS) based on user preferences.
+   * SMS is triggered for repayment_due and loan_defaulted events.
    */
-  private async notifyUserExternal(userId: string, message: string) {
+  private async notifyUserExternal(
+    userId: string,
+    message: string,
+    type: NotificationType,
+  ) {
     try {
       const result = await query(
         `SELECT email, phone, email_enabled, sms_enabled 
@@ -122,7 +130,11 @@ class NotificationService {
         await sendEmail(user.email, message);
       }
 
-      if (user.sms_enabled && user.phone) {
+      // Trigger SMS for critical events: repayment_due and loan_defaulted
+      const smsEnabledForType =
+        type === "repayment_due" || type === "loan_defaulted";
+
+      if (user.sms_enabled && user.phone && smsEnabledForType) {
         await sendSMS(user.phone, message);
       }
     } catch (error) {

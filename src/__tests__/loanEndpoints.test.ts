@@ -247,7 +247,7 @@ describe("POST /api/loans/submit", () => {
 describe("GET /api/loans/:loanId", () => {
   it("should return loan details for the authenticated borrower", async () => {
     mockedQuery
-      .mockResolvedValueOnce({ rows: [{ borrower: TEST_BORROWER }] }) // borrower check
+      .mockResolvedValueOnce({ rows: [{ address: TEST_BORROWER }] }) // address check
       .mockResolvedValueOnce({
         rows: [
           {
@@ -285,7 +285,7 @@ describe("GET /api/loans/:loanId", () => {
 
   it("should return 403 when the loan belongs to another borrower", async () => {
     mockedQuery.mockResolvedValueOnce({
-      rows: [{ borrower: "other-wallet" }],
+      rows: [{ address: "other-wallet" }],
     });
 
     const response = await request(app)
@@ -311,7 +311,7 @@ describe("GET /api/loans/:loanId", () => {
 describe("GET /api/loans/:loanId/amortization-schedule", () => {
   it("should return amortization schedule for an approved loan", async () => {
     mockedQuery
-      .mockResolvedValueOnce({ rows: [{ borrower: TEST_BORROWER }] })
+      .mockResolvedValueOnce({ rows: [{ address: TEST_BORROWER }] })
       .mockResolvedValueOnce({
         rows: [
           {
@@ -346,7 +346,7 @@ describe("GET /api/loans/:loanId/amortization-schedule", () => {
 
   it("should return 404 when loan is not fully approved", async () => {
     mockedQuery
-      .mockResolvedValueOnce({ rows: [{ borrower: TEST_BORROWER }] })
+      .mockResolvedValueOnce({ rows: [{ address: TEST_BORROWER }] })
       .mockResolvedValueOnce({
         rows: [
           {
@@ -445,7 +445,7 @@ describe("POST /api/loans/:loanId/repay", () => {
   it("should return unsigned XDR for valid repayment", async () => {
     // requireLoanBorrowerAccess check
     mockedQuery.mockResolvedValueOnce({
-      rows: [{ borrower: TEST_BORROWER }],
+      rows: [{ address: TEST_BORROWER }],
     });
 
     mockBuildRepayTx.mockResolvedValueOnce({
@@ -466,7 +466,7 @@ describe("POST /api/loans/:loanId/repay", () => {
 
   it("should return 403 when loan does not belong to user", async () => {
     mockedQuery.mockResolvedValueOnce({
-      rows: [{ borrower: "other-wallet" }],
+      rows: [{ address: "other-wallet" }],
     });
 
     const response = await request(app)
@@ -479,7 +479,7 @@ describe("POST /api/loans/:loanId/repay", () => {
 
   it("should reject missing amount", async () => {
     mockedQuery.mockResolvedValueOnce({
-      rows: [{ borrower: TEST_BORROWER }],
+      rows: [{ address: TEST_BORROWER }],
     });
 
     const response = await request(app)
@@ -498,7 +498,7 @@ describe("POST /api/loans/:loanId/submit", () => {
   it("should submit a signed repayment transaction", async () => {
     // requireLoanBorrowerAccess
     mockedQuery.mockResolvedValueOnce({
-      rows: [{ borrower: TEST_BORROWER }],
+      rows: [{ address: TEST_BORROWER }],
     });
 
     mockSubmitSignedTx.mockResolvedValueOnce({

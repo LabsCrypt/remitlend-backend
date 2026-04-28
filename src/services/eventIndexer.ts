@@ -29,6 +29,9 @@ const EVENT_TYPE_ALIASES: Record<string, WebhookEventType> = {
   GovProp: "ProposalCreated",
   GovAppr: "ProposalApproved",
   GovFin: "ProposalFinalized",
+  GovCncl: "ProposalCancelled",
+  GovEmerg: "ProposalCancelled",
+  GovExp: "ProposalCancelled",
 };
 
 export interface SorobanRawEvent {
@@ -42,10 +45,10 @@ export interface SorobanRawEvent {
   contractId: string;
 }
 
-interface LoanEvent extends IndexedLoanEvent {
+interface ContractEvent extends IndexedLoanEvent {
   amount?: string;
   loanId?: number;
-  borrower: string;
+  address?: string;
   ledger: number;
   ledgerClosedAt: Date;
   txHash: string;
@@ -400,7 +403,7 @@ export class EventIndexer {
   private async storeEvents(
     events: SorobanRawEvent[],
   ): Promise<StoreEventsResult> {
-    const parsedEvents: LoanEvent[] = [];
+    const parsedEvents: ContractEvent[] = [];
     let quarantineAttempts = 0;
 
     for (const event of events) {
@@ -427,7 +430,7 @@ export class EventIndexer {
       return { insertedCount: 0 };
     }
 
-    const insertedEvents: LoanEvent[] = [];
+    const insertedEvents: ContractEvent[] = [];
 
     // Collect score deltas per user within the transaction so that the score
     // upsert is atomic with the event inserts. A single bulk upsert at the
@@ -441,7 +444,7 @@ export class EventIndexer {
             event_id,
             event_type,
             loan_id,
-            borrower,
+            address,
             amount,
             ledger,
             ledger_closed_at,
@@ -452,14 +455,14 @@ export class EventIndexer {
             interest_rate_bps,
             term_ledgers
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
           ON CONFLICT (event_id) DO NOTHING
           RETURNING event_id`,
           [
             event.eventId,
             event.eventType,
             event.loanId ?? null,
-            event.borrower || "",
+            event.address ?? null,
             event.amount ?? null,
             event.ledger,
             event.ledgerClosedAt,
@@ -479,26 +482,18 @@ export class EventIndexer {
           // the end of the transaction avoids N+1 score updates.
           if (event.eventType === "LoanRepaid") {
             const { repaymentDelta } = sorobanService.getScoreConfig();
-            if (event.borrower) {
+            if (event.address) {
               scoreUpdates.set(
-                event.borrower,
-                (scoreUpdates.get(event.borrower) ?? 0) + repaymentDelta,
+                event.address,
+                (scoreUpdates.get(event.address) ?? 0) + repaymentDelta,
               );
             }
-          } else if (event.eventType === "LoanDefaulted") {
+          } else if (event.eventType === "LoanDefaulted" || event.eventType === "CollateralLiquidated") {
             const { defaultPenalty } = sorobanService.getScoreConfig();
-            if (event.borrower) {
+            if (event.address) {
               scoreUpdates.set(
-                event.borrower,
-                (scoreUpdates.get(event.borrower) ?? 0) - defaultPenalty,
-              );
-            }
-          } else if (event.eventType === "CollateralLiquidated") {
-            const { defaultPenalty } = sorobanService.getScoreConfig();
-            if (event.borrower) {
-              scoreUpdates.set(
-                event.borrower,
-                (scoreUpdates.get(event.borrower) ?? 0) - defaultPenalty,
+                event.address,
+                (scoreUpdates.get(event.address) ?? 0) - defaultPenalty,
               );
             }
           }
@@ -526,7 +521,7 @@ export class EventIndexer {
         eventId: event.eventId,
         eventType: event.eventType,
         ...(event.loanId !== undefined ? { loanId: event.loanId } : {}),
-        borrower: event.borrower,
+        address: event.address,
         ...(event.amount !== undefined ? { amount: event.amount } : {}),
         ledger: event.ledger,
         ledgerClosedAt: event.ledgerClosedAt.toISOString(),
@@ -546,25 +541,27 @@ export class EventIndexer {
     };
   }
 
-  private parseEvent(event: SorobanRawEvent): LoanEvent | null {
+  private parseEvent(event: SorobanRawEvent): ContractEvent | null {
     const type = this.decodeEventType(event.topic[0]);
     if (!type) return null;
 
-    let borrower = "";
     let loanId: number | undefined;
+    let address: string | undefined;
     let amount: string | undefined;
     let interestRateBps: number | undefined;
     let termLedgers: number | undefined;
 
     if (type === "LoanRequested") {
-      if (!event.topic[1]) return null;
-      borrower = this.decodeAddress(event.topic[1]);
+      if (!event.topic[1] || !event.topic[2]) return null;
+      loanId = this.decodeLoanId(event.topic[1]);
+      if (loanId === undefined) return null;
+      address = this.decodeAddress(event.topic[2]);
       amount = this.decodeAmount(event.value);
     } else if (type === "LoanApproved") {
       if (!event.topic[1] || !event.topic[2]) return null;
       loanId = this.decodeLoanId(event.topic[1]);
       if (loanId === undefined) return null;
-      borrower = this.decodeAddress(event.topic[2]);
+      address = this.decodeAddress(event.topic[2]);
 
       const data = scValToNative(event.value);
       if (!Array.isArray(data) || data.length < 2) {
@@ -588,14 +585,14 @@ export class EventIndexer {
       }
     } else if (type === "LoanRepaid") {
       if (!event.topic[1] || !event.topic[2]) return null;
-      borrower = this.decodeAddress(event.topic[1]);
+      address = this.decodeAddress(event.topic[1]);
       loanId = this.decodeLoanId(event.topic[2]);
       amount = this.decodeAmount(event.value);
     } else if (type === "LoanDefaulted") {
       if (!event.topic[1]) return null;
       loanId = this.decodeLoanId(event.topic[1]);
       if (loanId === undefined) return null;
-      borrower = this.decodeAddress(event.value);
+      address = this.decodeAddress(event.value);
     } else if (type === "CollateralLiquidated") {
       if (!event.topic[1]) return null;
       loanId = this.decodeLoanId(event.topic[1]);
@@ -607,7 +604,8 @@ export class EventIndexer {
       type === "EmergencyWithdraw"
     ) {
       if (!event.topic[1]) return null;
-      borrower = this.decodeAddress(event.topic[1]);
+      address = this.decodeAddress(event.topic[1]);
+      // LP events have (amount, shares) in value
       amount = this.decodeTupleFirstNumericValue(event.value);
     } else if (
       type === "NFTMinted" ||
@@ -616,25 +614,115 @@ export class EventIndexer {
       type === "NFTBurned"
     ) {
       if (!event.topic[1]) return null;
-      borrower = this.decodeAddress(event.topic[1]);
+      address = this.decodeAddress(event.topic[1]);
       if (type === "NFTMinted" || type === "ScoreUpdated") {
         amount = this.decodeAmount(event.value);
       }
     } else if (
       type === "ProposalCreated" ||
       type === "ProposalApproved" ||
-      type === "ProposalFinalized"
+      type === "ProposalFinalized" ||
+      type === "ProposalCancelled"
     ) {
       if (!event.topic[1]) return null;
-      borrower = this.decodeAddress(event.topic[1]);
+      address = this.decodeAddress(event.topic[1]);
     } else if (type === "Transfer") {
-      if (!event.topic[2]) return null;
-      borrower = this.decodeAddress(event.topic[2]);
+      // (from, to), ()
+      if (event.topic[2]) {
+        address = this.decodeAddress(event.topic[2]);
+      }
+    } else if (type === "LoanRefinanced") {
+      // (type, loan_id, borrower), [new_amount, new_term]
+      if (!event.topic[1] || !event.topic[2]) return null;
+      loanId = this.decodeLoanId(event.topic[1]);
+      address = this.decodeAddress(event.topic[2]);
+      amount = this.decodeTupleFirstNumericValue(event.value);
+    } else if (type === "LoanExtended") {
+      // (type, loan_id, borrower), [new_due_ledger, fee_amount, extension_count]
+      if (!event.topic[1] || !event.topic[2]) return null;
+      loanId = this.decodeLoanId(event.topic[1]);
+      address = this.decodeAddress(event.topic[2]);
+      const data = scValToNative(event.value);
+      if (Array.isArray(data) && data.length >= 2) {
+        amount = data[1].toString();
+      }
+    } else if (type === "LoanCancelled") {
+      // (type, borrower), loan_id
+      if (!event.topic[1]) return null;
+      address = this.decodeAddress(event.topic[1]);
+      loanId = this.decodeLoanId(event.value);
+    } else if (type === "LoanRejected") {
+      // (type, loan_id), reason
+      if (!event.topic[1]) return null;
+      loanId = this.decodeLoanId(event.topic[1]);
+    } else if (type === "LateFeeCharged") {
+      // (type, loan_id), amount
+      if (!event.topic[1]) return null;
+      loanId = this.decodeLoanId(event.topic[1]);
+      amount = this.decodeAmount(event.value);
+    } else if (type === "CollateralReturned") {
+      // (type, borrower, loan_id), amount
+      if (!event.topic[1] || !event.topic[2]) return null;
+      address = this.decodeAddress(event.topic[1]);
+      loanId = this.decodeLoanId(event.topic[2]);
+      amount = this.decodeAmount(event.value);
+    } else if (type === "YieldDistributed" || type === "DepositCapUpdated") {
+      // (type, token), amount / [old, new]
+      if (!event.topic[1]) return null;
+      address = this.decodeAddress(event.topic[1]);
+      if (type === "YieldDistributed") {
+        amount = this.decodeAmount(event.value);
+      } else {
+        const data = scValToNative(event.value);
+        if (Array.isArray(data) && data.length >= 2) {
+          amount = data[1].toString();
+        }
+      }
+    } else if (type === "WithdrawalCooldownUpdated") {
+      // (type), [old, new]
+      const data = scValToNative(event.value);
+      if (Array.isArray(data) && data.length >= 2) {
+        amount = data[1].toString();
+      }
+    } else if (type === "PoolPaused" || type === "PoolUnpaused") {
+      // (type)
+    } else if (type === "ColDep" || type === "ColRel") {
+      // (loan_id, borrower), amount
+      if (event.topic[1]) {
+        loanId = this.decodeLoanId(event.topic[1]);
+      }
+      if (event.topic[2]) {
+        address = this.decodeAddress(event.topic[2]);
+      }
+      if (type === "ColDep") {
+        amount = this.decodeAmount(event.value);
+      }
+    } else if (type === "ScoreDecr") {
+      // (old_score, new_score, symbol)
+      if (!event.topic[1]) return null;
+      address = this.decodeAddress(event.topic[1]);
+      const data = scValToNative(event.value);
+      if (Array.isArray(data) && data.length >= 2) {
+        amount = data[1].toString();
+      }
+    } else if (type === "LoanApprv") {
+      // (type, admin), (loan_id, borrower)
+      const data = scValToNative(event.value);
+      if (Array.isArray(data) && data.length >= 2) {
+        loanId = Number(data[0]);
+        address = data[1].toString();
+      }
+    } else if (type === "LoanLiquidated") {
+      // (type, loan_id, borrower, liquidator), (debt_repaid, liquidator_bonus, borrower_refund)
+      if (!event.topic[1] || !event.topic[2]) return null;
+      loanId = this.decodeLoanId(event.topic[1]);
+      address = this.decodeAddress(event.topic[2]);
+      amount = this.decodeTupleFirstNumericValue(event.value);
     }
 
     return {
       eventId: event.id,
-      eventType: type,
+      eventType: type as WebhookEventType,
       ledger: event.ledger,
       ledgerClosedAt: new Date(event.ledgerClosedAt),
       txHash: event.txHash,
@@ -645,7 +733,7 @@ export class EventIndexer {
       ...(loanId !== undefined ? { loanId } : {}),
       ...(interestRateBps !== undefined ? { interestRateBps } : {}),
       ...(termLedgers !== undefined ? { termLedgers } : {}),
-      borrower,
+      address,
     };
   }
 
@@ -670,8 +758,8 @@ export class EventIndexer {
     }
   }
 
-  private async triggerNotification(event: LoanEvent): Promise<void> {
-    if (!event.borrower) return;
+  private async triggerNotification(event: ContractEvent): Promise<void> {
+    if (!event.address) return;
 
     let type = "";
     let title = "";
@@ -711,7 +799,7 @@ export class EventIndexer {
     }
 
     await notificationService.createNotification({
-      userId: event.borrower,
+      userId: event.address,
       type: type as NotificationType,
       title,
       message,

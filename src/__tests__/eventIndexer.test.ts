@@ -273,7 +273,7 @@ describe("EventIndexer", () => {
           return { rows: [], rowCount: 0 };
         }
 
-        if (sql.includes("INSERT INTO loan_events")) {
+        if (sql.includes("INSERT INTO contract_events")) {
           insertedLoanEvents.push(params);
           return { rows: [{ event_id: params[0] }], rowCount: 1 };
         }
@@ -367,6 +367,7 @@ describe("EventIndexer", () => {
     expect(mockGetScoreConfig).toHaveBeenCalledTimes(2);
     expect(mockDispatch).toHaveBeenCalledTimes(4);
     expect(mockBroadcast).toHaveBeenCalledTimes(4);
+    expect(mockBroadcast).toHaveBeenCalledWith(expect.objectContaining({ address: borrowerRequested }));
     expect(mockCreateNotification).toHaveBeenCalledTimes(3);
   });
 
@@ -502,7 +503,7 @@ describe("EventIndexer", () => {
           return { rows: [], rowCount: 0 };
         }
 
-        if (sql.includes("INSERT INTO loan_events")) {
+        if (sql.includes("INSERT INTO contract_events")) {
           insertStatements.push(sql);
           insertCount += 1;
           const inserted = insertCount === 1;
@@ -559,7 +560,7 @@ describe("EventIndexer", () => {
           return { rows: [], rowCount: 0 };
         }
 
-        if (sql.includes("INSERT INTO loan_events")) {
+        if (sql.includes("INSERT INTO contract_events")) {
           if (params[1] === "LoanApproved" && params[2] === 42) {
             approvedInsertCount += 1;
             const inserted = approvedInsertCount === 1;
@@ -634,7 +635,7 @@ describe("EventIndexer", () => {
           return { rows: [], rowCount: 0 };
         }
 
-        if (sql.includes("INSERT INTO loan_events")) {
+        if (sql.includes("INSERT INTO contract_events")) {
           return { rows: [{ event_id: params[0] }], rowCount: 1 };
         }
 

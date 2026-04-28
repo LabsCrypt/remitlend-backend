@@ -35,13 +35,13 @@ export const createTestLoan = asyncHandler(
     }
 
     const loanResult = await query(
-      `INSERT INTO loan_events (borrower, event_type, amount, ledger, ledger_closed_at) VALUES ($1, 'LoanRequested', $2, NULL, NOW()) RETURNING loan_id`,
+      `INSERT INTO contract_events (address, event_type, amount, ledger, ledger_closed_at) VALUES ($1, 'LoanRequested', $2, NULL, NOW()) RETURNING loan_id`,
       [borrower, amount],
     );
     const loanId = loanResult.rows[0].loan_id;
 
     await query(
-      `INSERT INTO loan_events (loan_id, borrower, event_type, amount, interest_rate_bps, term_ledgers, ledger, ledger_closed_at) VALUES ($1, $2, 'LoanApproved', $3, 1200, $4, NULL, NOW())`,
+      `INSERT INTO contract_events (loan_id, address, event_type, amount, interest_rate_bps, term_ledgers, ledger, ledger_closed_at) VALUES ($1, $2, 'LoanApproved', $3, 1200, $4, NULL, NOW())`,
       [loanId, borrower, amount, term],
     );
 
@@ -63,7 +63,7 @@ export const markLoanDefaulted = asyncHandler(
     const borrower = req.body.borrower || req.user?.publicKey || null;
 
     const loanResult = await query(
-      `SELECT loan_id FROM loan_events WHERE loan_id = $1 LIMIT 1`,
+      `SELECT loan_id FROM contract_events WHERE loan_id = $1 LIMIT 1`,
       [loanId],
     );
     if (loanResult.rows.length === 0) {
@@ -71,7 +71,7 @@ export const markLoanDefaulted = asyncHandler(
     }
 
     await query(
-      `INSERT INTO loan_events (loan_id, borrower, event_type, amount, ledger, ledger_closed_at) VALUES ($1, $2, 'LoanDefaulted', NULL, NULL, NOW())`,
+      `INSERT INTO contract_events (loan_id, address, event_type, amount, ledger, ledger_closed_at) VALUES ($1, $2, 'LoanDefaulted', NULL, NULL, NOW())`,
       [loanId, borrower],
     );
 
@@ -101,7 +101,7 @@ export const contestDefault = asyncHandler(
 
     // Check loan exists and is defaulted
     const loanResult = await query(
-      `SELECT loan_id FROM loan_events WHERE loan_id = $1 AND event_type = 'LoanDefaulted' LIMIT 1`,
+      `SELECT loan_id FROM contract_events WHERE loan_id = $1 AND event_type = 'LoanDefaulted' LIMIT 1`,
       [loanId],
     );
     if (loanResult.rows.length === 0) {
@@ -117,7 +117,7 @@ export const contestDefault = asyncHandler(
     // Optionally: update loan status to 'disputed' in your loan status tracking (if applicable)
     // If you have a loan status table/column, update it here. If only events, you may want to insert a new event:
     await query(
-      `INSERT INTO loan_events (loan_id, borrower, event_type, amount, ledger, ledger_closed_at) VALUES ($1, $2, 'LoanDisputed', NULL, NULL, NOW())`,
+      `INSERT INTO contract_events (loan_id, address, event_type, amount, ledger, ledger_closed_at) VALUES ($1, $2, 'LoanDisputed', NULL, NULL, NOW())`,
       [loanId, borrower],
     );
 
@@ -272,7 +272,7 @@ export const getBorrowerLoans = asyncHandler(
       WITH loan_summaries AS (
         SELECT
           loan_id,
-          borrower,
+          address,
           MAX(CASE WHEN event_type = 'LoanRequested' THEN amount END)::numeric as principal,
           MAX(CASE WHEN event_type = 'LoanApproved' THEN ledger_closed_at END) as approved_at,
           MAX(CASE WHEN event_type = 'LoanApproved' THEN ledger END) as approved_ledger,
@@ -280,9 +280,9 @@ export const getBorrowerLoans = asyncHandler(
           MAX(CASE WHEN event_type = 'LoanApproved' THEN term_ledgers END) as term_ledgers,
           SUM(CASE WHEN event_type = 'LoanRepaid' THEN amount::numeric ELSE 0 END) as total_repaid,
           MAX(CASE WHEN event_type = 'LoanDefaulted' THEN 1 ELSE 0 END) as is_defaulted
-        FROM loan_events
-        WHERE borrower = $1 AND loan_id IS NOT NULL
-        GROUP BY loan_id, borrower
+        FROM contract_events
+        WHERE address = $1 AND loan_id IS NOT NULL
+        GROUP BY loan_id, address
       ),
       loan_calculations AS (
         SELECT
@@ -421,7 +421,7 @@ export const getLoanDetails = asyncHandler(
 
     const eventsResult = await query(
       `SELECT event_type, amount, ledger, ledger_closed_at, tx_hash, interest_rate_bps, term_ledgers
-       FROM loan_events
+       FROM contract_events
        WHERE loan_id = $1
        ORDER BY ledger_closed_at ASC`,
       [loanId],
@@ -469,7 +469,7 @@ export const getLoanDetails = asyncHandler(
       const disputeCreatedAt = new Date(disputeResult.rows[0].created_at);
       // Find the ledger that closed just before or at disputeCreatedAt
       const ledgerResult = await query(
-        `SELECT ledger, ledger_closed_at FROM loan_events WHERE loan_id = $1 AND ledger_closed_at <= $2 ORDER BY ledger_closed_at DESC LIMIT 1`,
+        `SELECT ledger, ledger_closed_at FROM contract_events WHERE loan_id = $1 AND ledger_closed_at <= $2 ORDER BY ledger_closed_at DESC LIMIT 1`,
         [loanId, disputeCreatedAt],
       );
       freezeLedger =
@@ -532,7 +532,7 @@ export const getLoanAmortizationSchedule = asyncHandler(
 
     const eventsResult = await query(
       `SELECT event_type, amount, ledger_closed_at, interest_rate_bps, term_ledgers
-       FROM loan_events
+       FROM contract_events
        WHERE loan_id = $1
        ORDER BY ledger_closed_at ASC`,
       [loanId],

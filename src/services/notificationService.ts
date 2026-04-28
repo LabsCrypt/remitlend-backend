@@ -42,9 +42,10 @@ type SseClient = Response;
 const sseClients = new Map<string, Set<SseClient>>();
 
 // SendGrid / Twilio initialization
-const twilioClient = process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN
-  ? twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
-  : null;
+const twilioClient =
+  process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN
+    ? twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
+    : null;
 
 async function sendEmail(email: string, message: string) {
   logger.info(`[Email] Sending to ${email}: ${message}`);
@@ -94,10 +95,10 @@ class NotificationService {
 
     const notification = this.mapRow(result.rows[0]);
     this.broadcast(userId, notification);
-    
+
     // Also trigger external notifications
     await this.notifyUserExternal(userId, message);
-    
+
     return notification;
   }
 
@@ -307,7 +308,8 @@ class NotificationService {
       title: row.title as string,
       message: row.message as string,
       read: row.read as boolean,
-      status: (row.status as NotificationStatus) ?? (row.read ? "read" : "unread"),
+      status:
+        (row.status as NotificationStatus) ?? (row.read ? "read" : "unread"),
       createdAt: new Date(row.created_at as string),
     };
     return loanId !== undefined ? { ...base, loanId } : base;
@@ -324,7 +326,10 @@ let cleanupInterval: ReturnType<typeof setInterval> | undefined;
 export function startNotificationCleanupScheduler(): void {
   if (cleanupInterval) return;
 
-  const retentionDays = parseInt(process.env.NOTIFICATION_RETENTION_DAYS || "90", 10);
+  const retentionDays = parseInt(
+    process.env.NOTIFICATION_RETENTION_DAYS || "90",
+    10,
+  );
   const readRetentionDays = parseInt(
     process.env.READ_NOTIFICATION_RETENTION_DAYS || "30",
     10,

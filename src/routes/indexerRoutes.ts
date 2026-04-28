@@ -211,7 +211,6 @@ router.get("/webhooks", requireApiKey, listWebhookSubscriptions);
  */
 router.post("/webhooks", requireApiKey, createWebhookSubscription);
 
-
 /**
  * @swagger
  * /indexer/webhooks/{subscriptionId}:

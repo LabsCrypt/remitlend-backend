@@ -12,11 +12,13 @@ export const listLoanDisputes = asyncHandler(async (req, res) => {
     throw AppError.badRequest("Invalid status filter");
   }
 
-  const where = status === "all" ? "" : `WHERE status = '${status}'`;
-  const result = await query(
-    `SELECT * FROM loan_disputes ${where} ORDER BY created_at ASC`,
-    [],
-  );
+  const result =
+    status === "all"
+      ? await query(`SELECT * FROM loan_disputes ORDER BY created_at ASC`, [])
+      : await query(
+          `SELECT * FROM loan_disputes WHERE status = $1 ORDER BY created_at ASC`,
+          [status],
+        );
   res.json({ success: true, disputes: result.rows });
 });
 

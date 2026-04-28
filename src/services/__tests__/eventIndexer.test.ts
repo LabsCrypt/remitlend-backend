@@ -116,15 +116,6 @@ beforeAll(async () => {
 
   jest.unstable_mockModule("../webhookService.js", () => ({
     webhookService: { dispatch: mockWebhookDispatch },
-    SUPPORTED_WEBHOOK_EVENT_TYPES: [
-      "LoanRepaid",
-      "LoanDefaulted",
-      "LoanApproved",
-      "LoanRequested",
-      "CollateralLiquidated",
-      "Deposit",
-      "Withdraw",
-    ],
     IndexedLoanEvent: {},
     WebhookEventType: {},
     SUPPORTED_WEBHOOK_EVENT_TYPES: [

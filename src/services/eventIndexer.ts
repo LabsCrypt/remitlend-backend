@@ -29,6 +29,9 @@ const EVENT_TYPE_ALIASES: Record<string, WebhookEventType> = {
   GovProp: "ProposalCreated",
   GovAppr: "ProposalApproved",
   GovFin: "ProposalFinalized",
+  GovCncl: "ProposalCancelled",
+  GovEmerg: "ProposalCancelled",
+  GovExp: "ProposalCancelled",
 };
 
 
@@ -605,7 +608,8 @@ export class EventIndexer {
     } else if (
       type === "ProposalCreated" ||
       type === "ProposalApproved" ||
-      type === "ProposalFinalized"
+      type === "ProposalFinalized" ||
+      type === "ProposalCancelled"
     ) {
       if (!event.topic[1]) return null;
       address = this.decodeAddress(event.topic[1]);
@@ -614,6 +618,61 @@ export class EventIndexer {
       if (event.topic[2]) {
         address = this.decodeAddress(event.topic[2]);
       }
+    } else if (type === "LoanRefinanced") {
+      // (type, loan_id, borrower), [new_amount, new_term]
+      if (!event.topic[1] || !event.topic[2]) return null;
+      loanId = this.decodeLoanId(event.topic[1]);
+      address = this.decodeAddress(event.topic[2]);
+      amount = this.decodeTupleFirstNumericValue(event.value);
+    } else if (type === "LoanExtended") {
+      // (type, loan_id, borrower), [new_due_ledger, fee_amount, extension_count]
+      if (!event.topic[1] || !event.topic[2]) return null;
+      loanId = this.decodeLoanId(event.topic[1]);
+      address = this.decodeAddress(event.topic[2]);
+      const data = scValToNative(event.value);
+      if (Array.isArray(data) && data.length >= 2) {
+        amount = data[1].toString();
+      }
+    } else if (type === "LoanCancelled") {
+      // (type, borrower), loan_id
+      if (!event.topic[1]) return null;
+      address = this.decodeAddress(event.topic[1]);
+      loanId = this.decodeLoanId(event.value);
+    } else if (type === "LoanRejected") {
+      // (type, loan_id), reason
+      if (!event.topic[1]) return null;
+      loanId = this.decodeLoanId(event.topic[1]);
+    } else if (type === "LateFeeCharged") {
+      // (type, loan_id), amount
+      if (!event.topic[1]) return null;
+      loanId = this.decodeLoanId(event.topic[1]);
+      amount = this.decodeAmount(event.value);
+    } else if (type === "CollateralReturned") {
+      // (type, borrower, loan_id), amount
+      if (!event.topic[1] || !event.topic[2]) return null;
+      address = this.decodeAddress(event.topic[1]);
+      loanId = this.decodeLoanId(event.topic[2]);
+      amount = this.decodeAmount(event.value);
+    } else if (type === "YieldDistributed" || type === "DepositCapUpdated") {
+      // (type, token), amount / [old, new]
+      if (!event.topic[1]) return null;
+      address = this.decodeAddress(event.topic[1]);
+      if (type === "YieldDistributed") {
+        amount = this.decodeAmount(event.value);
+      } else {
+        const data = scValToNative(event.value);
+        if (Array.isArray(data) && data.length >= 2) {
+          amount = data[1].toString();
+        }
+      }
+    } else if (type === "WithdrawalCooldownUpdated") {
+      // (type), [old, new]
+      const data = scValToNative(event.value);
+      if (Array.isArray(data) && data.length >= 2) {
+        amount = data[1].toString();
+      }
+    } else if (type === "PoolPaused" || type === "PoolUnpaused") {
+      // (type)
     } else if (type === "ColDep" || type === "ColRel") {
       // (loan_id, borrower), amount
       if (event.topic[1]) {
@@ -625,6 +684,27 @@ export class EventIndexer {
       if (type === "ColDep") {
         amount = this.decodeAmount(event.value);
       }
+    } else if (type === "ScoreDecr") {
+      // (old_score, new_score, symbol)
+      if (!event.topic[1]) return null;
+      address = this.decodeAddress(event.topic[1]);
+      const data = scValToNative(event.value);
+      if (Array.isArray(data) && data.length >= 2) {
+        amount = data[1].toString();
+      }
+    } else if (type === "LoanApprv") {
+      // (type, admin), (loan_id, borrower)
+      const data = scValToNative(event.value);
+      if (Array.isArray(data) && data.length >= 2) {
+        loanId = Number(data[0]);
+        address = data[1].toString();
+      }
+    } else if (type === "LoanLiquidated") {
+      // (type, loan_id, borrower, liquidator), (debt_repaid, liquidator_bonus, borrower_refund)
+      if (!event.topic[1] || !event.topic[2]) return null;
+      loanId = this.decodeLoanId(event.topic[1]);
+      address = this.decodeAddress(event.topic[2]);
+      amount = this.decodeTupleFirstNumericValue(event.value);
     }
 
     return {

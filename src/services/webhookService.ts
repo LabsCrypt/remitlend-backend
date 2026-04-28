@@ -29,6 +29,9 @@ export const SUPPORTED_WEBHOOK_EVENT_TYPES = [
   "ProposalCreated",
   "ProposalApproved",
   "ProposalFinalized",
+  "ProposalCancelled",
+  "LoanApprv",
+  "LoanLiquidated",
   // Legacy aliases kept to preserve compatibility for existing subscribers.
   "Mint",
   "ScoreUpd",

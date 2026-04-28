@@ -59,15 +59,15 @@ jest.unstable_mockModule("../services/eventStreamService.js", () => ({
 
 jest.unstable_mockModule("../services/cacheService.js", () => ({
   cacheService: {
-    get: jest.fn().mockResolvedValue(null),
-    set: jest.fn().mockResolvedValue(undefined),
-    delete: jest.fn().mockResolvedValue(undefined),
+    get: jest.fn<any>().mockResolvedValue(null),
+    set: jest.fn<any>().mockResolvedValue(undefined),
+    delete: jest.fn<any>().mockResolvedValue(undefined),
   },
 }));
 
 jest.unstable_mockModule("../services/notificationService.js", () => ({
   notificationService: {
-    createNotification: jest.fn().mockResolvedValue(undefined),
+    createNotification: jest.fn<any>().mockResolvedValue(undefined),
   },
 }));
 

@@ -88,5 +88,8 @@ export const resolveLoanDispute = asyncHandler(async (req, res) => {
     console.error("Failed to send dispute resolution notification:", error);
   }
 
-  res.json({ success: true, message: "Dispute resolved and borrower notified." });
+  res.json({
+    success: true,
+    message: "Dispute resolved and borrower notified.",
+  });
 });

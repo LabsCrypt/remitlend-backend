@@ -1,5 +1,4 @@
 import type { Config } from "jest";
-
 const config: Config = {
   preset: "ts-jest",
   testEnvironment: "node",
@@ -25,9 +24,8 @@ const config: Config = {
     },
   },
   moduleNameMapper: {
-    // Correct pattern - strips .js so Jest finds the .ts source file
+    "^redis$": "<rootDir>/__mocks__/redis.js",
     "^(./|../)(.*)\\.js$": "$1$2",
   },
 };
-
 export default config;

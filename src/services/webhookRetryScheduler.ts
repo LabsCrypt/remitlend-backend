@@ -1,8 +1,12 @@
 import { query } from "../db/connection.js";
 import logger from "../utils/logger.js";
 import { WebhookService, type WebhookEventType } from "./webhookService.js";
+import { cacheService } from "./cacheService.js";
 
 const BACKOFF = [60, 300, 1800]; // seconds
+
+const LOCK_KEY = "webhook_retry_scheduler:running";
+const LOCK_TTL_SECONDS = 120; // 2 minutes
 
 let schedulerInterval: NodeJS.Timeout | null = null;
 
@@ -42,8 +46,28 @@ async function sendWebhookAgain(delivery: any) {
 }
 
 export async function retryFailedWebhooks() {
+  let lockAcquired = false;
   try {
-    const result = await query(`
+    const lockValue = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    lockAcquired = await cacheService.setNotExists(
+      LOCK_KEY,
+      lockValue,
+      LOCK_TTL_SECONDS,
+    );
+  } catch (error) {
+    logger.error("Failed to acquire webhook retry scheduler lock", { error });
+  }
+
+  if (!lockAcquired) {
+    logger.warn(
+      "Webhook retry scheduler run skipped - another instance is already running",
+    );
+    return;
+  }
+
+  try {
+    try {
+      const result = await query(`
       SELECT wd.*, ws.max_attempts, ws.callback_url, ws.secret
       FROM webhook_deliveries wd
       JOIN webhook_subscriptions ws ON wd.subscription_id = ws.id
@@ -51,22 +75,29 @@ export async function retryFailedWebhooks() {
         AND (wd.next_retry_at IS NOT NULL OR wd.attempt_count = 0)
     `);
 
-    const failed = result.rows;
+      const failed = result.rows;
 
-    for (const delivery of failed) {
-      const delay = BACKOFF[delivery.attempt_count] || 3600;
+      for (const delivery of failed) {
+        const delay = BACKOFF[delivery.attempt_count] || 3600;
 
-      if (delivery.attempt_count >= delivery.max_attempts) {
-        await markAsFailed(delivery.id);
-        continue;
+        if (delivery.attempt_count >= delivery.max_attempts) {
+          await markAsFailed(delivery.id);
+          continue;
+        }
+
+        if (shouldRetry(delivery, delay)) {
+          await sendWebhookAgain(delivery);
+        }
       }
-
-      if (shouldRetry(delivery, delay)) {
-        await sendWebhookAgain(delivery);
-      }
+    } catch (error) {
+      logger.error("Error in webhook retry scheduler", { error });
     }
-  } catch (error) {
-    logger.error("Error in webhook retry scheduler", { error });
+  } finally {
+    try {
+      await cacheService.delete(LOCK_KEY);
+    } catch (error) {
+      logger.error("Failed to release webhook retry scheduler lock", { error });
+    }
   }
 }
 

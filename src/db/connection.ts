@@ -1,7 +1,30 @@
-import pg, { type PoolClient } from "pg";
-import logger from "../utils/logger.js";
+/**
+ * @deprecated Database connection pool and legacy transaction helpers.
+ *
+ * This module previously exported a separate withTransaction implementation.
+ * All transaction helpers have been consolidated into src/db/transaction.ts.
+ *
+ * Migration:
+ *   OLD: import { withTransaction } from "../db/connection";
+ *   NEW: import { withTransaction } from "../db/transaction";
+ */
 
-export type { PoolClient };
+import { Pool } from "pg";
+import { withTransaction, withTransactionNoRetry } from "../db/transaction";
+
+export const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  // ... your existing pool config
+});
+
+/**
+ * @deprecated Import from "../db/transaction" instead.
+ * This re-export will be removed in a future release.
+ */
+export { withTransaction, withTransactionNoRetry };
+
+// Re-export pool types for convenience
+export type { PoolClient } from "pg";
 
 const { Pool } = pg;
 

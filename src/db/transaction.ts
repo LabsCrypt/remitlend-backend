@@ -1,99 +1,125 @@
-import { getClient } from "./connection.js";
-import logger from "../utils/logger.js";
+/**
+ * Canonical transaction helper with configurable retry semantics.
+ *
+ * Money-moving code MUST use withTransaction (retrying variant).
+ * Read-only or idempotent non-critical paths MAY use withTransactionNoRetry.
+ *
+ * @see docs/database-transactions.md
+ */
+
+import { PoolClient } from "pg"; // adjust for your driver (pg, mysql2, etc.)
+
+// ─── Retry configuration ──────────────────────────────────────────────────────
+
+const RETRY_CONFIG = {
+  maxRetries: 5,
+  baseDelayMs: 50,
+  maxDelayMs: 2000,
+  transientErrorCodes: new Set([
+    "40001", // serialization_failure
+    "40P01", // deadlock_detected
+    "08006", // connection_failure
+    "08003", // connection_does_not_exist
+    "08001", // sqlclient_unable_to_establish_sqlconnection
+  ]),
+};
+
+// ─── Types ──────────────────────────────────────────────────────────────────
+
+export type TransactionFn<T> = (client: PoolClient) => Promise<T>;
+
+export interface TransactionOptions {
+  /** Retry on transient errors (deadlock, serialization failure). Default: true */
+  retry?: boolean;
+  /** Override max retry attempts. Only used when retry=true */
+  maxRetries?: number;
+}
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+function isTransientError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const code = (error as any).code;
+  return typeof code === "string" && RETRY_CONFIG.transientErrorCodes.has(code);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function exponentialBackoff(attempt: number): number {
+  const delay = Math.min(
+    RETRY_CONFIG.baseDelayMs * 2 ** attempt,
+    RETRY_CONFIG.maxDelayMs
+  );
+  // Add jitter to prevent thundering herd
+  return delay + Math.random() * delay * 0.5;
+}
+
+// ─── Core implementation ────────────────────────────────────────────────────
 
 /**
- * Execute a database transaction with automatic rollback on error
- * @param operations - Array of database operations to execute within the transaction
- * @returns Promise with the result of the operations
+ * Execute work inside a database transaction.
+ *
+ * By default (retry=true) this retries on transient errors
+ * (deadlock, serialization failure) with exponential backoff.
+ * Use this for ALL money-moving or state-mutating operations.
  */
 export async function withTransaction<T>(
-  operations: (client: any) => Promise<T>,
+  client: PoolClient,
+  fn: TransactionFn<T>,
+  options: TransactionOptions = {}
 ): Promise<T> {
-  let client;
-  try {
-    client = await getClient();
-  } catch (error) {
-    logger.error("Failed to acquire database client for transaction", {
-      error,
-    });
-    throw new Error("Database connection failed");
-  }
+  const { retry = true, maxRetries = RETRY_CONFIG.maxRetries } = options;
 
-  if (!client) {
-    throw new Error("Database client is undefined");
-  }
-
-  try {
+  async function attempt(attemptNumber: number): Promise<T> {
     await client.query("BEGIN");
-    logger.debug("Database transaction started");
-
-    const result = await operations(client);
-
-    await client.query("COMMIT");
-    logger.debug("Database transaction committed");
-
-    return result;
-  } catch (error) {
-    await client.query("ROLLBACK");
-    logger.error("Database transaction rolled back due to error:", error);
-    throw error;
-  } finally {
-    client.release();
-  }
-}
-
-/**
- * Execute multiple database operations in a transaction
- * @param queries - Array of queries with their parameters
- * @returns Promise with array of results
- */
-export async function executeTransactionQueries(
-  queries: Array<{ text: string; params?: unknown[] }>,
-): Promise<any[]> {
-  return withTransaction(async (client) => {
-    const results = [];
-
-    for (const query of queries) {
-      const result = await client.query(query.text, query.params || []);
-      results.push(result);
-    }
-
-    return results;
-  });
-}
-
-/**
- * Wrapper for operations that involve both on-chain submission and database writes
- * @param stellarOperation - Function that submits to Stellar network
- * @param dbOperations - Function that performs database writes
- * @returns Promise with combined result
- */
-export async function withStellarAndDbTransaction<T>(
-  stellarOperation: () => Promise<any>,
-  dbOperations: (stellarResult: any, client: any) => Promise<T>,
-): Promise<{ stellarResult: any; dbResult: T }> {
-  return withTransaction(async (client) => {
     try {
-      // Execute Stellar operation first
-      const stellarResult = await stellarOperation();
-
-      // Then execute database operations with the Stellar result
-      const dbResult = await dbOperations(stellarResult, client);
-
-      return { stellarResult, dbResult };
+      const result = await fn(client);
+      await client.query("COMMIT");
+      return result;
     } catch (error) {
-      logger.error("Operation failed in Stellar+DB transaction:", {
-        error: error instanceof Error ? error.message : "Unknown error",
-        // Don't log sensitive Stellar data
-      });
+      await client.query("ROLLBACK").catch(() => {}); // ignore rollback errors
 
-      // Log for reconciliation since Stellar transaction might have succeeded
-      // but DB write failed
-      logger.warn("Stellar transaction might need manual reconciliation", {
-        timestamp: new Date().toISOString(),
-      });
+      const shouldRetry =
+        retry &&
+        attemptNumber < maxRetries &&
+        isTransientError(error);
+
+      if (shouldRetry) {
+        const delay = exponentialBackoff(attemptNumber);
+        console.warn(
+          `[withTransaction] Transient error (attempt ${attemptNumber + 1}/${maxRetries + 1}), ` +
+          `retrying in ${Math.round(delay)}ms: ${(error as Error).message}`
+        );
+        await sleep(delay);
+        return attempt(attemptNumber + 1);
+      }
 
       throw error;
     }
-  });
+  }
+
+  return attempt(0);
 }
+
+/**
+ * Execute work inside a database transaction WITHOUT retry.
+ *
+ * Use ONLY for:
+ * - Read-only transactions where retry adds no value
+ * - Idempotent admin/ops scripts
+ * - Cases where the caller handles retry externally
+ *
+ * ⚠️ NEVER use this for money-moving code.
+ */
+export async function withTransactionNoRetry<T>(
+  client: PoolClient,
+  fn: TransactionFn<T>
+): Promise<T> {
+  return withTransaction(client, fn, { retry: false });
+}
+
+// ─── Re-export for backward compatibility during migration ────────────────────
+// TODO: Remove after all imports are migrated
+export { withTransaction as withTransactionRetry };

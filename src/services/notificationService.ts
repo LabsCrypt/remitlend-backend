@@ -3,6 +3,7 @@ import logger from "../utils/logger.js";
 import type { Response } from "express";
 import twilio from "twilio";
 import sgMail from "@sendgrid/mail";
+import { cacheService } from "./cacheService.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -460,6 +461,54 @@ export const notificationService = new NotificationService();
 
 let cleanupInterval: ReturnType<typeof setInterval> | undefined;
 
+const CLEANUP_LOCK_KEY = "notification_cleanup:running";
+const CLEANUP_LOCK_TTL_SECONDS = 3600; // 1 hour
+
+const runCleanup = async () => {
+  const retentionDays = parseInt(
+    process.env.NOTIFICATION_RETENTION_DAYS || "90",
+    10,
+  );
+  const readRetentionDays = parseInt(
+    process.env.READ_NOTIFICATION_RETENTION_DAYS || "30",
+    10,
+  );
+
+  let lockAcquired = false;
+  try {
+    const lockValue = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    lockAcquired = await cacheService.setNotExists(
+      CLEANUP_LOCK_KEY,
+      lockValue,
+      CLEANUP_LOCK_TTL_SECONDS,
+    );
+  } catch (error) {
+    logger.error("Failed to acquire notification cleanup lock", { error });
+  }
+
+  if (!lockAcquired) {
+    logger.warn(
+      "Notification cleanup run skipped - another instance is already running",
+    );
+    return;
+  }
+
+  try {
+    await notificationService.deleteOldNotifications(retentionDays);
+    await notificationService.deleteReadAndArchived(readRetentionDays);
+  } finally {
+    try {
+      await cacheService.delete(CLEANUP_LOCK_KEY);
+    } catch (error) {
+      logger.error("Failed to release notification cleanup lock", { error });
+    }
+  }
+};
+
+export async function runNotificationCleanup(): Promise<void> {
+  await runCleanup();
+}
+
 /**
  * Starts a periodic scheduler to clean up old notifications based on retention policy.
  */
@@ -480,12 +529,10 @@ export function startNotificationCleanupScheduler(): void {
   );
 
   // Run once immediately on start to clear any backlog
-  void notificationService.deleteOldNotifications(retentionDays);
-  void notificationService.deleteReadAndArchived(readRetentionDays);
+  void runCleanup();
 
-  cleanupInterval = setInterval(async () => {
-    await notificationService.deleteOldNotifications(retentionDays);
-    await notificationService.deleteReadAndArchived(readRetentionDays);
+  cleanupInterval = setInterval(() => {
+    void runCleanup();
   }, intervalMs);
 
   logger.info("Notification cleanup scheduler started", {

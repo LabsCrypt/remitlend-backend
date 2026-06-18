@@ -2,19 +2,37 @@ import cron from "node-cron";
 import { query } from "../db/connection.js";
 import { notificationService } from "../services/notificationService.js";
 import logger from "../utils/logger.js";
+import { cacheService } from "../services/cacheService.js";
 
-/**
- * Checks for loans that are due soon (e.g., within 24 hours) and notifies borrowers.
- * Runs every hour at the top of the hour.
- */
-export function startLoanDueCheckCron() {
-  cron.schedule("0 * * * *", async () => {
+const LOCK_KEY = "loan_due_check_cron:running";
+const LOCK_TTL_SECONDS = 300; // 5 minutes
+
+export async function runLoanDueCheck(): Promise<void> {
+  let lockAcquired = false;
+  try {
+    const lockValue = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    lockAcquired = await cacheService.setNotExists(
+      LOCK_KEY,
+      lockValue,
+      LOCK_TTL_SECONDS,
+    );
+  } catch (error) {
+    logger.error("Failed to acquire loan due check cron lock", { error });
+  }
+
+  if (!lockAcquired) {
+    logger.warn(
+      "Loan due check cron skipped - another instance is already running",
+    );
+    return;
+  }
+
+  try {
     logger.info("Running loan due check cron...");
 
-    try {
-      // Find loans where a repayment is due in the next 24 hours
-      // This is a simplified query; in a real app, you'd check against a repayment schedule table
-      const result = await query(`
+    // Find loans where a repayment is due in the next 24 hours
+    // This is a simplified query; in a real app, you'd check against a repayment schedule table
+    const result = await query(`
         SELECT le.loan_id, le.address, le.amount
         FROM contract_events le
         WHERE le.event_type = 'LoanApproved'
@@ -25,21 +43,36 @@ export function startLoanDueCheckCron() {
           AND le.ledger_closed_at < NOW() - INTERVAL '30 days' -- Simplified due logic
       `);
 
-      for (const loan of result.rows) {
-        await notificationService.createNotification({
-          userId: loan.address,
-          type: "repayment_due",
-          title: "Repayment Due Soon",
-          message: `Your repayment for loan #${loan.loan_id} of ${loan.amount} is due.`,
-          loanId: loan.loan_id,
-        });
-      }
-
-      logger.info(
-        `Loan due check completed. Notified ${result.rows.length} borrowers.`,
-      );
-    } catch (error) {
-      logger.error("Error in loan due check cron", { error });
+    for (const loan of result.rows) {
+      await notificationService.createNotification({
+        userId: loan.address,
+        type: "repayment_due",
+        title: "Repayment Due Soon",
+        message: `Your repayment for loan #${loan.loan_id} of ${loan.amount} is due.`,
+        loanId: loan.loan_id,
+      });
     }
+
+    logger.info(
+      `Loan due check completed. Notified ${result.rows.length} borrowers.`,
+    );
+  } catch (error) {
+    logger.error("Error in loan due check cron", { error });
+  } finally {
+    try {
+      await cacheService.delete(LOCK_KEY);
+    } catch (error) {
+      logger.error("Failed to release loan due check cron lock", { error });
+    }
+  }
+}
+
+/**
+ * Checks for loans that are due soon (e.g., within 24 hours) and notifies borrowers.
+ * Runs every hour at the top of the hour.
+ */
+export function startLoanDueCheckCron() {
+  cron.schedule("0 * * * *", () => {
+    void runLoanDueCheck();
   });
 }

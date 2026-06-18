@@ -27,6 +27,13 @@ jest.unstable_mockModule("../services/scoresService.js", () => ({
   setAbsoluteUserScoresBulk: mockSetAbsoluteUserScoresBulk,
 }));
 
+jest.unstable_mockModule("../services/cacheService.js", () => ({
+  cacheService: {
+    setNotExists: jest.fn<any>().mockResolvedValue(true),
+    delete: jest.fn<any>().mockResolvedValue(undefined),
+  },
+}));
+
 const logger = (await import("../utils/logger.js")).default;
 const { scoreReconciliationService } =
   await import("../services/scoreReconciliationService.js");
@@ -91,6 +98,11 @@ describe("scoreReconciliationService", () => {
 
     const result =
       await scoreReconciliationService.reconcileActiveBorrowerScores();
+
+    expect(result).not.toBeNull();
+    if (!result) {
+      throw new Error("Result is null");
+    }
 
     expect(result).toMatchObject({
       activeBorrowerCount: 3,

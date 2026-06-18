@@ -66,8 +66,7 @@ export async function retryFailedWebhooks() {
   }
 
   try {
-    try {
-      const result = await query(`
+    const result = await query(`
       SELECT wd.*, ws.max_attempts, ws.callback_url, ws.secret
       FROM webhook_deliveries wd
       JOIN webhook_subscriptions ws ON wd.subscription_id = ws.id
@@ -75,23 +74,22 @@ export async function retryFailedWebhooks() {
         AND (wd.next_retry_at IS NOT NULL OR wd.attempt_count = 0)
     `);
 
-      const failed = result.rows;
+    const failed = result.rows;
 
-      for (const delivery of failed) {
-        const delay = BACKOFF[delivery.attempt_count] || 3600;
+    for (const delivery of failed) {
+      const delay = BACKOFF[delivery.attempt_count] || 3600;
 
-        if (delivery.attempt_count >= delivery.max_attempts) {
-          await markAsFailed(delivery.id);
-          continue;
-        }
-
-        if (shouldRetry(delivery, delay)) {
-          await sendWebhookAgain(delivery);
-        }
+      if (delivery.attempt_count >= delivery.max_attempts) {
+        await markAsFailed(delivery.id);
+        continue;
       }
-    } catch (error) {
-      logger.error("Error in webhook retry scheduler", { error });
+
+      if (shouldRetry(delivery, delay)) {
+        await sendWebhookAgain(delivery);
+      }
     }
+  } catch (error) {
+    logger.error("Error in webhook retry scheduler", { error });
   } finally {
     try {
       await cacheService.delete(LOCK_KEY);

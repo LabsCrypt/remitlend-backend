@@ -9,16 +9,16 @@ const LOCK_TTL_SECONDS = 300; // 5 minutes
 
 export async function runLoanDueCheck(): Promise<void> {
   let lockAcquired = false;
-    try {
-      const lockValue = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-      lockAcquired = await cacheService.setNotExists(
-        LOCK_KEY,
-        lockValue,
-        LOCK_TTL_SECONDS,
-      );
-    } catch (error) {
-      logger.error("Failed to acquire loan due check cron lock", { error });
-    }
+  try {
+    const lockValue = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    lockAcquired = await cacheService.setNotExists(
+      LOCK_KEY,
+      lockValue,
+      LOCK_TTL_SECONDS,
+    );
+  } catch (error) {
+    logger.error("Failed to acquire loan due check cron lock", { error });
+  }
 
   if (!lockAcquired) {
     logger.warn(

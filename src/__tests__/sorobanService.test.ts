@@ -14,7 +14,6 @@ import {
   TransactionBuilder,
   Operation,
 } from "@stellar/stellar-sdk";
-import { AppError } from "../errors/AppError.js";
 
 // Mock the logger to prevent cluttering stdout and to check log calls if needed
 const mockLogger = {

@@ -11,6 +11,27 @@ import { query } from "../db/connection.js";
 import { withTransaction } from "../db/transaction.js";
 import { AppError } from "../errors/AppError.js";
 import logger from "../utils/logger.js";
+// OLD (callback-first — BROKEN):
+// await withTransaction(async (client: PoolClient) => {
+//   await client.query("INSERT ...", [params]);
+// });
+
+// NEW (client-first):
+import { pool } from "../db/connection.js";
+
+
+const client = await pool.connect();
+try {
+  const result = await withTransaction(
+    client,
+    async (tx: PoolClient) => {
+      await tx.query("INSERT ...", [params]);
+      return { id: "123" };
+    },
+  );
+} finally {
+  client.release();
+}
 
 export interface CreateRemittancePayload {
   recipientAddress: string;

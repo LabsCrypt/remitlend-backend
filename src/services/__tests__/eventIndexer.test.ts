@@ -400,9 +400,9 @@ describe("EventIndexer — advisory lock prevents concurrent poll cycles", () =>
       expect.any(Array),
     );
     // pg_advisory_unlock must NOT be called — we never held the lock
-    const unlockCalls = (mockLockClient.query as jest.Mock).mock.calls.filter(
-      ([sql]: [string]) => sql.includes("pg_advisory_unlock"),
-    );
+    const unlockCalls = (
+      (mockLockClient.query as jest.Mock).mock.calls as [string][]
+    ).filter(([sql]) => sql.includes("pg_advisory_unlock"));
     expect(unlockCalls).toHaveLength(0);
     // Lock client always released back to the pool
     expect(mockLockClient.release).toHaveBeenCalledTimes(1);
@@ -427,7 +427,7 @@ describe("EventIndexer — advisory lock prevents concurrent poll cycles", () =>
 
     // Make the pool-level query (getLastIndexedLedger) throw
     const mockQuery = (await import("../../db/connection.js"))
-      .query as jest.Mock;
+      .query as jest.Mock<() => Promise<never>>;
     mockQuery.mockRejectedValueOnce(new Error("db unavailable"));
 
     const indexer = makeIndexer();
@@ -436,9 +436,9 @@ describe("EventIndexer — advisory lock prevents concurrent poll cycles", () =>
     await indexer.stop();
 
     // Lock was acquired and then unlocked despite the error
-    const unlockCalls = (mockLockClient.query as jest.Mock).mock.calls.filter(
-      ([sql]: [string]) => sql.includes("pg_advisory_unlock"),
-    );
+    const unlockCalls = (
+      (mockLockClient.query as jest.Mock).mock.calls as [string][]
+    ).filter(([sql]) => sql.includes("pg_advisory_unlock"));
     expect(unlockCalls).toHaveLength(1);
     // Client always returned to pool
     expect(mockLockClient.release).toHaveBeenCalledTimes(1);
@@ -463,12 +463,17 @@ describe("EventIndexer — advisory lock prevents concurrent poll cycles", () =>
 
     const queriedRanges: Array<{ from: number; to: number }> = [];
 
-    mockQuery.mockImplementation(async (sql: string, params: unknown[] = []) => {
-      // getLastIndexedLedger — return persisted cursor
+    (
+      mockQuery as jest.Mock<
+        (
+          sql: string,
+          params?: unknown[],
+        ) => Promise<{ rows: unknown[]; rowCount: number }>
+      >
+    ).mockImplementation(async (sql: string, _params?: unknown[]) => {
       if (sql.includes("SELECT last_indexed_ledger")) {
         return { rows: [{ last_indexed_ledger: 500 }], rowCount: 1 };
       }
-      // updateLastIndexedLedger
       if (sql.includes("UPDATE indexer_state")) {
         return { rows: [], rowCount: 1 };
       }
@@ -500,7 +505,7 @@ describe("EventIndexer — advisory lock prevents concurrent poll cycles", () =>
 
     // Must have fetched starting from 501, not 0 or 1
     expect(queriedRanges.length).toBeGreaterThan(0);
-    expect(queriedRanges[0].from).toBe(501);
+    expect(queriedRanges[0]?.from).toBe(501);
   });
 
   it("only the instance whose insert wins dispatches webhooks and notifications", async () => {

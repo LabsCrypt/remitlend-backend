@@ -80,7 +80,9 @@ const mockLockClient = {
 
 jest.unstable_mockModule("../db/connection.js", () => ({
   query: mockQuery,
-  getClient: jest.fn().mockResolvedValue(mockLockClient),
+  getClient: jest
+    .fn<() => Promise<typeof mockLockClient>>()
+    .mockResolvedValue(mockLockClient),
   closePool: jest.fn(),
   withTransaction: jest.fn(
     async (

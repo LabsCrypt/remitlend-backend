@@ -21,7 +21,7 @@ import { AppError } from "../errors/AppError.js";
 
 // NEW import:
 import { type PoolClient, query, pool } from "../db/connection.js";
-import { withTransaction } from "../db/transaction.js";
+import { withTransaction } from "../db/connection.js";
 
 const EVENT_TYPE_ALIASES: Record<string, WebhookEventType> = {
   Mint: "NFTMinted",
@@ -459,8 +459,8 @@ export class EventIndexer {
     const scoreUpdates: Map<string, number> = new Map();
 
     const client = await pool.connect();
-    try {
-      await withTransaction(client, async (tx: PoolClient) => {
+   try {
+  await withTransaction(async (tx: PoolClient) => {
         for (const event of parsedEvents) {
           const insertResult = await tx.query(
             `INSERT INTO loan_events (

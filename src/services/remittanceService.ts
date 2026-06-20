@@ -8,7 +8,7 @@ import {
 } from "@stellar/stellar-sdk";
 import { getStellarNetworkPassphrase } from "../config/stellar.js";
 import { query } from "../db/connection.js";
-import { withTransaction } from "../db/transaction.js";
+import { withTransaction } from "../db/connection.js";
 import { AppError } from "../errors/AppError.js";
 import logger from "../utils/logger.js";
 

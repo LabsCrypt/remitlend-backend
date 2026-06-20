@@ -1,5 +1,6 @@
-import { query, withTransaction } from "../db/connection.js";
+import { query } from "../db/connection.js";
 import type { PoolClient } from "pg";
+import { withTransaction } from "../db/transaction.js";
 
 export interface UserProfile {
   id: number;

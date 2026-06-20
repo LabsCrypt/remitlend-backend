@@ -2,8 +2,7 @@
  * src/db/connection.ts
  *
  * Database connection pool and query helper.
- * Transaction helpers live in transaction.ts and are re-exported here
- * for backward compatibility.
+ * Transaction helpers are re-exported from transaction.ts for convenience.
  */
 
 import pg from "pg";
@@ -30,16 +29,25 @@ pool.on("error", (err) => {
 /**
  * Execute a single query using a pooled client.
  * The client is automatically released back to the pool.
+ * Returns the full pg.QueryResult so callers can access .rows, .rowCount, etc.
  */
-export async function query<T = unknown>(
+export async function query(
   sql: string,
   params?: unknown[],
-): Promise<T[]> {
+): Promise<pg.QueryResult> {
   const client = await pool.connect();
   try {
-    const result = await client.query<T>(sql, params);
-    return result.rows;
+    const result = await client.query(sql, params);
+    return result;
   } finally {
     client.release();
   }
+}
+
+/**
+ * Acquire a dedicated client from the pool.
+ * Caller MUST call client.release() when done.
+ */
+export async function getClient(): Promise<pg.PoolClient> {
+  return pool.connect();
 }

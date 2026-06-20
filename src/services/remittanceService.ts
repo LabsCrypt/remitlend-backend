@@ -11,27 +11,6 @@ import { query } from "../db/connection.js";
 import { withTransaction } from "../db/transaction.js";
 import { AppError } from "../errors/AppError.js";
 import logger from "../utils/logger.js";
-// OLD (callback-first — BROKEN):
-// await withTransaction(async (client: PoolClient) => {
-//   await client.query("INSERT ...", [params]);
-// });
-
-// NEW (client-first):
-import { pool } from "../db/connection.js";
-
-
-const client = await pool.connect();
-try {
-  const result = await withTransaction(
-    client,
-    async (tx: PoolClient) => {
-      await tx.query("INSERT ...", [params]);
-      return { id: "123" };
-    },
-  );
-} finally {
-  client.release();
-}
 
 export interface CreateRemittancePayload {
   recipientAddress: string;
@@ -150,7 +129,7 @@ export const remittanceService = {
       return await withTransaction(async (client) => {
         const result = await client.query(
           `INSERT INTO remittances
-           (id, sender_id, recipient_address, amount, from_currency, to_currency, memo, status, xdr, created_at, updated_at)
+            (id, sender_id, recipient_address, amount, from_currency, to_currency, memo, status, xdr, created_at, updated_at)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
            RETURNING *`,
           [
@@ -228,7 +207,7 @@ export const remittanceService = {
       }
 
       const result = await query(
-        `SELECT * FROM remittances 
+        `SELECT * FROM remittances
          WHERE ${whereClause}
          ORDER BY created_at DESC, id DESC
          LIMIT $${params.length + 1}`,
@@ -324,7 +303,7 @@ export const remittanceService = {
   ): Promise<Remittance> {
     try {
       const result = await query(
-        `UPDATE remittances 
+        `UPDATE remittances
          SET status = $1, transaction_hash = $2, error_message = $3, updated_at = $4
          WHERE id = $5
          RETURNING *`,

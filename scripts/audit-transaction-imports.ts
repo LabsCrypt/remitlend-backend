@@ -45,14 +45,17 @@ function analyzeFile(filePath: string): ImportMatch[] {
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    const importRegex = /import\s+.*?\{[^}]*\b(withTransaction|withTransactionNoRetry)\b[^}]*\}.*?from\s+['"]([^'"]+)['"]/;
+    const importRegex =
+      /import\s+.*?\{[^}]*\b(withTransaction|withTransactionNoRetry)\b[^}]*\}.*?from\s+['"]([^'"]+)['"]/;
     const match = line.match(importRegex);
 
     if (match) {
       const sourceModule = match[2];
-      const source: ImportMatch["source"] =
-        sourceModule.includes("connection") ? "connection" :
-        sourceModule.includes("transaction") ? "transaction" : "unknown";
+      const source: ImportMatch["source"] = sourceModule.includes("connection")
+        ? "connection"
+        : sourceModule.includes("transaction")
+          ? "transaction"
+          : "unknown";
 
       matches.push({
         file: path.relative(process.cwd(), filePath),
@@ -88,8 +91,12 @@ function main() {
   console.log(`Total imports found: ${allMatches.length}\n`);
 
   if (fromConnection.length > 0) {
-    console.log(`⚠️  Imports from connection.ts (NEED MIGRATION): ${fromConnection.length}`);
-    console.log("   These should be updated to import from '../db/transaction'\n");
+    console.log(
+      `⚠️  Imports from connection.ts (NEED MIGRATION): ${fromConnection.length}`,
+    );
+    console.log(
+      "   These should be updated to import from '../db/transaction'\n",
+    );
     for (const m of fromConnection) {
       console.log(`   ${m.file}:${m.line}`);
       console.log(`   → ${m.text}\n`);
@@ -99,7 +106,9 @@ function main() {
   }
 
   if (fromTransaction.length > 0) {
-    console.log(`✅ Imports from transaction.ts (CORRECT): ${fromTransaction.length}\n`);
+    console.log(
+      `✅ Imports from transaction.ts (CORRECT): ${fromTransaction.length}\n`,
+    );
     for (const m of fromTransaction) {
       console.log(`   ${m.file}:${m.line}`);
       console.log(`   → ${m.text}\n`);
@@ -107,7 +116,9 @@ function main() {
   }
 
   if (usingNoRetry.length > 0) {
-    console.log(`ℹ️  Files using withTransactionNoRetry: ${usingNoRetry.length}`);
+    console.log(
+      `ℹ️  Files using withTransactionNoRetry: ${usingNoRetry.length}`,
+    );
     console.log("   Please verify these are intentionally non-retrying:\n");
     for (const m of usingNoRetry) {
       console.log(`   ${m.file}:${m.line}`);
@@ -116,19 +127,22 @@ function main() {
   }
 
   // Money-moving paths check
-  const moneyPaths = allMatches.filter((m) =>
-    m.file.toLowerCase().includes("loan") ||
-    m.file.toLowerCase().includes("payment") ||
-    m.file.toLowerCase().includes("repay") ||
-    m.file.toLowerCase().includes("transfer") ||
-    m.file.toLowerCase().includes("wallet") ||
-    m.file.toLowerCase().includes("balance")
+  const moneyPaths = allMatches.filter(
+    (m) =>
+      m.file.toLowerCase().includes("loan") ||
+      m.file.toLowerCase().includes("payment") ||
+      m.file.toLowerCase().includes("repay") ||
+      m.file.toLowerCase().includes("transfer") ||
+      m.file.toLowerCase().includes("wallet") ||
+      m.file.toLowerCase().includes("balance"),
   );
 
   if (moneyPaths.length > 0) {
     console.log("💰 Money-moving paths using withTransaction:");
     for (const m of moneyPaths) {
-      const status = m.usesNoRetry ? "❌ USES NO-RETRY — RISK!" : "✅ retrying variant";
+      const status = m.usesNoRetry
+        ? "❌ USES NO-RETRY — RISK!"
+        : "✅ retrying variant";
       console.log(`   ${m.file}:${m.line} — ${status}`);
     }
   }
@@ -136,8 +150,12 @@ function main() {
   console.log("\n═══════════════════════════════════════════════════════════");
   console.log("  Recommended fixes:");
   console.log("═══════════════════════════════════════════════════════════");
-  console.log(`  sed -i 's|from "../db/connection"|from "../db/transaction"|g' src/**/*.ts`);
-  console.log("  Then verify money-moving paths use withTransaction (not NoRetry).");
+  console.log(
+    `  sed -i 's|from "../db/connection"|from "../db/transaction"|g' src/**/*.ts`,
+  );
+  console.log(
+    "  Then verify money-moving paths use withTransaction (not NoRetry).",
+  );
 }
 
 main();

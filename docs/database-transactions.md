@@ -2,10 +2,10 @@
 
 ## Quick Reference
 
-| Helper | Retries? | Use For |
-|--------|----------|---------|
-| `withTransaction` | ✅ Yes (exponential backoff) | **All money-moving code** — loans, repayments, transfers, balance updates |
-| `withTransactionNoRetry` | ❌ No | Read-only queries, idempotent admin scripts, externally-managed retry |
+| Helper                   | Retries?                     | Use For                                                                   |
+| ------------------------ | ---------------------------- | ------------------------------------------------------------------------- |
+| `withTransaction`        | ✅ Yes (exponential backoff) | **All money-moving code** — loans, repayments, transfers, balance updates |
+| `withTransactionNoRetry` | ❌ No                        | Read-only queries, idempotent admin scripts, externally-managed retry     |
 
 ## Import
 
@@ -72,3 +72,4 @@ async function getLoanHistory(userId: string) {
     client.release();
   }
 }
+```

@@ -568,6 +568,7 @@ export class EventIndexer {
     } finally {
       client.release();
     }
+  }
 
   private parseEvent(event: SorobanRawEvent): ContractEvent | null {
     const type = this.decodeEventType(event.topic[0]);

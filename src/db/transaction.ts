@@ -1,126 +1,67 @@
 /**
- * src/db/transaction.ts
- *
- * Transaction helpers with retry logic and Stellar integration.
- *
+ * Canonical transaction helpers with retry logic.
  * Exports:
- *   withTransaction          — canonical DB transaction helper (client-first)
- *   withRetryingTransaction  — same, with connection-level retry
- *   withStellarAndDbTransaction — money-moving path (Stellar + DB atomic)
- *   executeTransactionQueries — run queries inside an existing transaction
+ *   withTransaction            — callback-first DB transaction (with retry)
+ *   withRetryingTransaction    — alias for backward compatibility
+ *   withStellarAndDbTransaction — money-moving path (Stellar + DB)
+ *   executeTransactionQueries   — run queries inside an existing transaction
  */
 
 import pg, { type PoolClient } from "pg";
 import { pool } from "./connection.js";
 import logger from "../utils/logger.js";
-import { withRetry } from "../utils/withRetry.js";
-import {
-  type Transaction,
-  type xdr as XdrNamespace,
-  SorobanRpc,
-} from "@stellar/stellar-sdk";
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// ─── Types ─────────────────────────────────────────────────────────────────
 
 export interface TransactionOptions {
-  /** Max attempts for connection-level retries (default: 3) */
+  /** Max attempts for transient-error retries (default: 3) */
   maxRetries?: number;
-  /** Delay between retries in ms (default: 100) */
-  retryDelayMs?: number;
-}
-
-export interface StellarDbTransactionOptions extends TransactionOptions {
-  /** Soroban RPC server for simulation/submission */
-  rpc: SorobanRpc.Server;
-  /** Transaction builder callback */
-  buildStellarTx: () => Promise<Transaction>;
+  /** Initial back-off delay in ms (default: 200, doubles each retry) */
+  baseDelayMs?: number;
 }
 
 export type TransactionCallback<T> = (client: PoolClient) => Promise<T>;
 
-// Connection failure codes that warrant re-acquiring a client
-const CONNECTION_FAILURE_CODES = new Set([
-  "08006", // connection_failure
+// Transient error codes that warrant retry with exponential backoff
+const TRANSIENT_ERROR_CODES = new Set([
+  "ECONNREFUSED",
+  "08000", // connection_exception
   "08003", // connection_does_not_exist
-  "08001", // sqlclient_unable_to_establish_sqlconnection
-  "08004", // sqlserver_rejected_establishment_of_sqlconnection
+  "08006", // connection_failure
+  "57P01", // admin_shutdown
+  "57P02", // crash_shutdown
+  "57P03", // cannot_connect_now
+  "40001", // serialization_failure
+  "40P01", // deadlock_detected
 ]);
 
-function isConnectionFailure(err: unknown): boolean {
+function isTransientError(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
   const code = (err as { code?: string }).code;
-  return typeof code === "string" && CONNECTION_FAILURE_CODES.has(code);
+  return typeof code === "string" && TRANSIENT_ERROR_CODES.has(code);
 }
 
-// ─── Core withTransaction (client-first signature) ────────────────────────────
-
-/**
- * Execute work inside a database transaction.
- *
- * Signature: withTransaction(client, fn, options?)
- *
- * The caller provides the client (typically from pool.connect()).
- * This helper handles BEGIN, COMMIT, and ROLLBACK. On error it re-throws
- * after rolling back so the caller can release the client.
- *
- * @example
- * ```ts
- * const client = await pool.connect();
- * try {
- *   const result = await withTransaction(client, async (tx) => {
- *     await tx.query("UPDATE accounts SET balance = balance - $1", [100]);
- *     return { ok: true };
- *   });
- * } finally {
- *   client.release();
- * }
- * ```
- */
-export async function withTransaction<T>(
-  client: PoolClient,
-  fn: TransactionCallback<T>,
-  _options?: TransactionOptions,
-): Promise<T> {
-  await client.query("BEGIN");
-  try {
-    const result = await fn(client);
-    await client.query("COMMIT");
-    return result;
-  } catch (err) {
-    await client.query("ROLLBACK").catch((rollbackErr) => {
-      logger.error("Rollback failed", rollbackErr);
-    });
-    throw err;
-  }
-}
-
-// ─── Retrying variant (re-acquires client on connection failures) ─────────────
+// ─── Core withTransaction (callback-first, with retry) ─────────────────────
 
 /**
  * Execute work inside a database transaction with automatic retry on
- * connection failures.
+ * transient PostgreSQL errors (deadlock, serialization failure, etc.).
  *
- * Unlike withTransaction, this helper acquires its own client from the pool
- * and **re-acquires** on connection failure codes (08006, 08003, etc.).
- * This ensures actual recovery from dropped connections.
- *
- * @example
- * ```ts
- * const result = await withRetryingTransaction(async (client) => {
- *   const rows = await client.query("SELECT * FROM users");
- *   return rows.rows;
- * }, { maxRetries: 3 });
- * ```
+ * A dedicated PoolClient is checked out for each attempt so that
+ * BEGIN / all DML / COMMIT run on the same connection.
+ * If the callback throws, or a transient error is encountered, the
+ * transaction is rolled back and retried up to `maxRetries` times
+ * with exponential back-off.
  */
-export async function withRetryingTransaction<T>(
+export async function withTransaction<T>(
   fn: TransactionCallback<T>,
   options: TransactionOptions = {},
 ): Promise<T> {
   const maxRetries = options.maxRetries ?? 3;
-  const retryDelayMs = options.retryDelayMs ?? 100;
-  let lastError: unknown;
+  const baseDelayMs = options.baseDelayMs ?? 200;
+  let attempt = 0;
 
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+  while (true) {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
@@ -129,98 +70,71 @@ export async function withRetryingTransaction<T>(
       return result;
     } catch (err) {
       await client.query("ROLLBACK").catch((rollbackErr) => {
-        logger.error("Rollback failed on retry attempt", rollbackErr);
+        logger.error("Rollback failed", rollbackErr);
       });
 
-      lastError = err;
-
-      if (!isConnectionFailure(err) || attempt === maxRetries) {
-        throw err;
+      if (isTransientError(err) && attempt < maxRetries) {
+        const delay = baseDelayMs * 2 ** attempt;
+        attempt++;
+        logger.warn(
+          `Transient DB error in transaction (${(err as Error).message}). ` +
+            `Retrying in ${delay}ms (attempt ${attempt}/${maxRetries})`,
+        );
+        await new Promise((r) => setTimeout(r, delay));
+        continue;
       }
 
-      logger.warn(
-        `Connection failure on attempt ${attempt}/${maxRetries}, re-acquiring client...`,
-        err,
-      );
-      await new Promise((r) => setTimeout(r, retryDelayMs * attempt));
-      // Loop continues — a fresh client is acquired on next iteration
+      throw err;
     } finally {
       client.release();
     }
   }
-
-  throw lastError;
 }
 
-// ─── Stellar + DB atomic transaction ──────────────────────────────────────────
+// ─── Retrying variant (alias for backward compatibility) ──────────────────
 
 /**
- * Execute a Stellar blockchain transaction and database mutations atomically.
- *
- * Flow:
- *   1. BEGIN DB transaction
- *   2. Build and simulate Stellar transaction (read-only, uses DB state)
- *   3. Submit Stellar transaction
- *   4. On success: COMMIT DB transaction
- *   5. On failure: ROLLBACK DB transaction
- *
- * This ensures the DB state never diverges from the blockchain state.
- *
- * @deprecated Use withTransaction + manual Stellar submission for new code.
+ * Alias for withTransaction. Exists for code that explicitly wants the
+ * retrying behaviour spelled out in the call site.
  */
-export async function withStellarAndDbTransaction<T>(
-  rpc: SorobanRpc.Server,
-  buildStellarTx: () => Promise<Transaction>,
-  dbWork: TransactionCallback<T>,
+export async function withRetryingTransaction<T>(
+  fn: TransactionCallback<T>,
   options?: TransactionOptions,
-): Promise<{ stellarResult: unknown; dbResult: T }> {
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-
-    // Build and simulate (read-only — safe inside transaction)
-    const stellarTx = await buildStellarTx();
-    const simulated = await rpc.simulateTransaction(stellarTx);
-
-    if (SorobanRpc.Api.isSimulationError(simulated)) {
-      throw new Error(`Stellar simulation failed: ${simulated.error}`);
-    }
-
-    // Submit to network
-    const stellarResult = await rpc.sendTransaction(stellarTx);
-
-    // Execute DB work now that Stellar is confirmed
-    const dbResult = await dbWork(client);
-
-    await client.query("COMMIT");
-    return { stellarResult, dbResult };
-  } catch (err) {
-    await client.query("ROLLBACK").catch((rollbackErr) => {
-      logger.error("Stellar+DB rollback failed", rollbackErr);
-    });
-    throw err;
-  } finally {
-    client.release();
-  }
+): Promise<T> {
+  return withTransaction(fn, options);
 }
 
-// ─── Execute queries inside an existing transaction ───────────────────────────
+// ─── Stellar + DB transaction (old signature, now with retry) ─────────────
+
+/**
+ * Wrapper for operations that involve both on-chain submission and database writes.
+ *
+ * ⚠️ CRITICAL: The Stellar operation executes OUTSIDE the DB transaction and is
+ * IRREVERSIBLE. If the DB transaction fails after Stellar succeeds, manual reconciliation
+ * may be required. The DB portion uses the retrying withTransaction.
+ *
+ * @param stellarOperation — Function that submits to Stellar network (executed first)
+ * @param dbOperations    — Function that performs database writes (inside retrying tx)
+ */
+export async function withStellarAndDbTransaction<T>(
+  stellarOperation: () => Promise<unknown>,
+  dbOperations: (stellarResult: unknown, client: PoolClient) => Promise<T>,
+): Promise<{ stellarResult: unknown; dbResult: T }> {
+  // Execute Stellar operation first (irreversible — outside DB transaction)
+  const stellarResult = await stellarOperation();
+
+  // Then execute DB operations inside the retrying transaction wrapper
+  const dbResult = await withTransaction(async (client) => {
+    return await dbOperations(stellarResult, client);
+  });
+
+  return { stellarResult, dbResult };
+}
+
+// ─── Execute queries inside an existing transaction ────────────────────────
 
 /**
  * Run a batch of queries inside an existing transaction client.
- *
- * This is a thin wrapper for code that already holds a transaction client
- * and wants to execute multiple queries without nested BEGIN/COMMIT.
- *
- * @example
- * ```ts
- * await withTransaction(client, async (tx) => {
- *   await executeTransactionQueries(tx, [
- *     { sql: "UPDATE accounts SET balance = $1", params: [100] },
- *     { sql: "INSERT INTO logs (msg) VALUES ($1)", params: ["deducted"] },
- *   ]);
- * });
- * ```
  */
 export async function executeTransactionQueries(
   client: PoolClient,

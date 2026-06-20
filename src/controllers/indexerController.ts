@@ -494,58 +494,21 @@ export const createWebhookSubscription = async (
 ) => {
   try {
     const { callbackUrl, eventTypes, secret } = req.body as {
-      callbackUrl?: string;
-      eventTypes?: string[];
+      callbackUrl: string;
+      eventTypes: WebhookEventType[];
       secret?: string;
     };
-
-    if (!callbackUrl) {
-      return res.status(400).json({
-        success: false,
-        message: "callbackUrl is required",
-      });
-    }
-
-    let parsedUrl: URL;
-    try {
-      parsedUrl = new URL(callbackUrl);
-    } catch {
-      return res.status(400).json({
-        success: false,
-        message: "callbackUrl must be a valid URL",
-      });
-    }
-
-    if (!["http:", "https:"].includes(parsedUrl.protocol)) {
-      return res.status(400).json({
-        success: false,
-        message: "callbackUrl must use http or https",
-      });
-    }
-
-    const normalizedEventTypes = Array.isArray(eventTypes)
-      ? eventTypes.filter((eventType): eventType is WebhookEventType =>
-          SUPPORTED_WEBHOOK_EVENT_TYPES.includes(eventType as WebhookEventType),
-        )
-      : [];
-
-    if (normalizedEventTypes.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: `eventTypes must include at least one of: ${SUPPORTED_WEBHOOK_EVENT_TYPES.join(", ")}`,
-      });
-    }
 
     const subscription = await webhookService.registerSubscription(
       secret
         ? {
             callbackUrl,
-            eventTypes: normalizedEventTypes,
+            eventTypes,
             secret,
           }
         : {
             callbackUrl,
-            eventTypes: normalizedEventTypes,
+            eventTypes,
           },
     );
 
@@ -634,31 +597,10 @@ export const getWebhookDeliveries = async (req: Request, res: Response) => {
 
 export const reindexLedgerRange = async (req: Request, res: Response) => {
   try {
-    const fromLedger = Number(req.query.fromLedger);
-    const toLedger = Number(req.query.toLedger);
-
-    if (!Number.isInteger(fromLedger) || !Number.isInteger(toLedger)) {
-      return res.status(400).json({
-        success: false,
-        message: "fromLedger and toLedger must be integers",
-      });
-    }
-
-    if (fromLedger <= 0 || toLedger <= 0 || fromLedger > toLedger) {
-      return res.status(400).json({
-        success: false,
-        message: "Ledger range is invalid",
-      });
-    }
-
-    const maxRange = Number(process.env.REINDEX_MAX_RANGE ?? 25000);
-    const requestedRange = toLedger - fromLedger + 1;
-    if (requestedRange > maxRange) {
-      return res.status(400).json({
-        success: false,
-        message: `Requested range exceeds maximum of ${maxRange} ledgers`,
-      });
-    }
+    const { fromLedger, toLedger } = req.query as unknown as {
+      fromLedger: number;
+      toLedger: number;
+    };
 
     let indexer: EventIndexer;
     try {
@@ -742,34 +684,20 @@ export const reprocessQuarantinedEvents = async (
 ) => {
   try {
     const { ids, limit } = req.body as {
-      ids?: unknown;
-      limit?: unknown;
+      ids?: number[];
+      limit?: number;
     };
 
-    const parsedIds = Array.isArray(ids)
-      ? ids.filter((id): id is number => Number.isInteger(id) && id > 0)
-      : undefined;
-
-    if (Array.isArray(ids) && (!parsedIds || parsedIds.length !== ids.length)) {
-      return res.status(400).json({
-        success: false,
-        message: "ids must be an array of positive integers",
-      });
-    }
-
-    const parsedLimit =
-      typeof limit === "number" && Number.isInteger(limit) && limit > 0
-        ? Math.min(limit, 500)
-        : 50;
+    const parsedLimit = limit ? Math.min(limit, 500) : 50;
 
     const rowsResult =
-      parsedIds && parsedIds.length > 0
+      ids && ids.length > 0
         ? await query(
             `SELECT id, event_id, ledger, tx_hash, contract_id, raw_xdr, error_message, quarantined_at
            FROM quarantine_events
            WHERE id = ANY($1::int[])
            ORDER BY id ASC`,
-            [parsedIds],
+            [ids],
           )
         : await query(
             `SELECT id, event_id, ledger, tx_hash, contract_id, raw_xdr, error_message, quarantined_at

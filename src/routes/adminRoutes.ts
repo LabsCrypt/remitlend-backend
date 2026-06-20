@@ -3,7 +3,7 @@ import { z } from "zod";
 import { requireApiKey } from "../middleware/auth.js";
 import { requireJwtAuth, requireRoles } from "../middleware/jwtAuth.js";
 import { strictRateLimiter } from "../middleware/rateLimiter.js";
-import { validateBody } from "../middleware/validation.js";
+import { validateBody, validateQuery } from "../middleware/validation.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { auditLog } from "../middleware/auditLog.js";
 import { defaultChecker } from "../services/defaultChecker.js";
@@ -24,6 +24,11 @@ import {
   rejectLoanDispute,
 } from "../controllers/adminDisputeController.js";
 import { approveLoanBodySchema } from "../schemas/loanSchemas.js";
+import {
+  createWebhookSubscriptionSchema,
+  reindexLedgerRangeQuerySchema,
+  reprocessQuarantinedEventsSchema,
+} from "../schemas/indexerSchemas.js";
 import { query } from "../db/connection.js";
 
 const router = Router();
@@ -250,6 +255,7 @@ router.post(
   requireApiKey,
   strictRateLimiter,
   auditLog,
+  validateQuery(reindexLedgerRangeQuerySchema),
   reindexLedgerRange,
 );
 
@@ -310,6 +316,7 @@ router.post(
   requireApiKey,
   strictRateLimiter,
   auditLog,
+  validateBody(reprocessQuarantinedEventsSchema),
   reprocessQuarantinedEvents,
 );
 
@@ -350,6 +357,7 @@ router.post(
   requireApiKey,
   strictRateLimiter,
   auditLog,
+  validateBody(createWebhookSubscriptionSchema),
   createWebhookSubscription,
 );
 

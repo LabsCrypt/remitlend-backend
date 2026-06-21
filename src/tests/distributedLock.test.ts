@@ -34,8 +34,8 @@ jest.unstable_mockModule("../db/connection.js", () => ({
   withTransaction: jest.fn(),
 }));
 
-const { retryFailedWebhooks } =
-  await import("../services/webhookRetryScheduler.js");
+const { WebhookService } =
+  await import("../services/webhookService.js");
 const { scoreReconciliationService } =
   await import("../services/scoreReconciliationService.js");
 const { runLoanDueCheck } = await import("../cron/loanCheckCron.js");
@@ -48,10 +48,10 @@ describe("distributed lock: schedulers skip when lock is held", () => {
     mockWarn.mockClear();
   });
 
-  describe("webhookRetryScheduler", () => {
+  describe("webhookRetryProcessor", () => {
     it("skips run when lock is not acquired", async () => {
       activeLocks.add("webhook_retry_scheduler:running");
-      const result = await retryFailedWebhooks();
+      const result = await WebhookService.processRetries();
       expect(result).toBeUndefined();
       expect(mockWarn).toHaveBeenCalledWith(expect.stringContaining("skipped"));
     });
@@ -90,8 +90,8 @@ describe("distributed lock: schedulers skip when lock is held", () => {
       activeLocks.clear();
 
       // Trigger two concurrent runs
-      const promise1 = retryFailedWebhooks();
-      const promise2 = retryFailedWebhooks();
+      const promise1 = WebhookService.processRetries();
+      const promise2 = WebhookService.processRetries();
 
       await Promise.all([promise1, promise2]);
 

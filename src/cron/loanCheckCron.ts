@@ -7,6 +7,14 @@ import { cacheService } from "../services/cacheService.js";
 const LOCK_KEY = "loan_due_check_cron:running";
 const LOCK_TTL_SECONDS = 300; // 5 minutes
 
+const LEDGER_CLOSE_SECONDS = 5;
+const DEFAULT_TERM_LEDGERS = 17280; // 1 day in ledgers
+const NOTIFICATION_WINDOW_SECONDS = 24 * 60 * 60; // 24 hours
+
+function notificationCacheKey(loanId: number): string {
+  return `loan_due_notified:${loanId}`;
+}
+
 export async function runLoanDueCheck(): Promise<void> {
   let lockAcquired = false;
   try {
@@ -30,20 +38,33 @@ export async function runLoanDueCheck(): Promise<void> {
   try {
     logger.info("Running loan due check cron...");
 
-    // Find loans where a repayment is due in the next 24 hours
-    // This is a simplified query; in a real app, you'd check against a repayment schedule table
     const result = await query(`
-        SELECT le.loan_id, le.address, le.amount
+        SELECT le.loan_id, le.address, le.amount,
+               le.ledger_closed_at AS approved_at,
+               COALESCE(le.term_ledgers, ${DEFAULT_TERM_LEDGERS}) AS term_ledgers
         FROM contract_events le
         WHERE le.event_type = 'LoanApproved'
           AND NOT EXISTS (
-            SELECT 1 FROM contract_events re 
+            SELECT 1 FROM contract_events re
             WHERE re.loan_id = le.loan_id AND re.event_type = 'LoanRepaid'
           )
-          AND le.ledger_closed_at < NOW() - INTERVAL '30 days' -- Simplified due logic
+          AND (le.ledger_closed_at + (COALESCE(le.term_ledgers, ${DEFAULT_TERM_LEDGERS}) * ${LEDGER_CLOSE_SECONDS} || ' seconds')::interval) <= NOW() + INTERVAL '24 hours'
       `);
 
+    let notifiedCount = 0;
+
     for (const loan of result.rows) {
+      const cacheKey = notificationCacheKey(loan.loan_id);
+      const alreadyNotified = await cacheService.setNotExists(
+        cacheKey,
+        "1",
+        NOTIFICATION_WINDOW_SECONDS,
+      );
+
+      if (!alreadyNotified) {
+        continue;
+      }
+
       await notificationService.createNotification({
         userId: loan.address,
         type: "repayment_due",
@@ -51,10 +72,11 @@ export async function runLoanDueCheck(): Promise<void> {
         message: `Your repayment for loan #${loan.loan_id} of ${loan.amount} is due.`,
         loanId: loan.loan_id,
       });
+      notifiedCount++;
     }
 
     logger.info(
-      `Loan due check completed. Notified ${result.rows.length} borrowers.`,
+      `Loan due check completed. Notified ${notifiedCount} borrowers (${result.rows.length} due loans found).`,
     );
   } catch (error) {
     logger.error("Error in loan due check cron", { error });

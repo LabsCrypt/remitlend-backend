@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { query } from "../db/connection.js";
 import logger from "../utils/logger.js";
+import { cacheService } from "./cacheService.js";
 
 export const SUPPORTED_WEBHOOK_EVENT_TYPES = [
   "LoanRequested",
@@ -270,13 +271,15 @@ async function postWebhook(
   }
 }
 
+const RETRY_DELAYS_MS = [
+  5 * 60 * 1000,
+  15 * 60 * 1000,
+  45 * 60 * 1000,
+] as const;
+
 export const WEBHOOK_RETRY_CONFIG = {
-  RETRY_DELAYS_MS: [
-    5 * 60 * 1000,
-    15 * 60 * 1000,
-    45 * 60 * 1000,
-  ] as const,
-  MAX_RETRY_ATTEMPTS: 4,
+  RETRY_DELAYS_MS,
+  MAX_RETRY_ATTEMPTS: RETRY_DELAYS_MS.length + 1,
 };
 
 export const getRetryDelayMs = (attemptNumber: number): number => {
@@ -288,6 +291,28 @@ export const getRetryDelayMs = (attemptNumber: number): number => {
 export class WebhookService {
   // Retry processor that polls for pending retries
   static async processRetries(): Promise<void> {
+    const LOCK_KEY = "webhook_retry_scheduler:running";
+    const LOCK_TTL_SECONDS = 120; // 2 minutes
+
+    let lockAcquired = false;
+    try {
+      const lockValue = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      lockAcquired = await cacheService.setNotExists(
+        LOCK_KEY,
+        lockValue,
+        LOCK_TTL_SECONDS,
+      );
+    } catch (error) {
+      logger.error("Failed to acquire webhook retry scheduler lock", { error });
+    }
+
+    if (!lockAcquired) {
+      logger.warn(
+        "Webhook retry processor run skipped - another instance is already running",
+      );
+      return;
+    }
+
     logger.info("Starting webhook retry processor");
 
     try {
@@ -337,6 +362,14 @@ export class WebhookService {
       }
     } catch (error) {
       logger.error("Error in webhook retry processor", { error });
+    } finally {
+      try {
+        await cacheService.delete(LOCK_KEY);
+      } catch (error) {
+        logger.error("Failed to release webhook retry scheduler lock", {
+          error,
+        });
+      }
     }
   }
 

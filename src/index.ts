@@ -32,6 +32,7 @@ import {
 import { sorobanService } from "./services/sorobanService.js";
 import { validateLoanConfig } from "./config/loanConfig.js";
 import { startLoanDueCheckCron } from "./cron/loanCheckCron.js";
+import { startScoreDecayCron } from "./cron/scoreDecayJob.js";
 
 const port = process.env.PORT || 3001;
 
@@ -72,6 +73,9 @@ const server = app.listen(port, () => {
 
   // Start loan due check cron
   startLoanDueCheckCron();
+
+  // Start daily score decay for inactive borrowers
+  startScoreDecayCron();
 });
 
 const shutdown = async (signal: "SIGTERM" | "SIGINT") => {

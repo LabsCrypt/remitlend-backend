@@ -387,6 +387,24 @@ describe("EventIndexer", () => {
 - [ ] Event archival to cold storage
 - [ ] GraphQL API for complex queries
 
+---
+
+# Score Decay Service
+
+## Decision
+
+Score decay is a **real feature** retained in the codebase. Inactive borrowers (no `LoanRepaid` event in the last 30 days) have their credit score reduced by 5 points per month of inactivity, down to the platform minimum of 300.
+
+## Why
+
+A lending platform must distinguish active, reliable borrowers from dormant accounts. Without decay, a borrower who repaid once years ago retains a high score indefinitely, which misrepresents their current creditworthiness.
+
+## How it works
+
+- `scoreDecayService.ts` queries the `scores` table joined with `contract_events` to find inactive borrowers and applies a per-month decay.
+- `scoreDecayJob.ts` runs as a daily cron (02:00 UTC) with a Redis distributed lock to prevent duplicate execution across instances.
+- The job is wired into `index.ts` via `startScoreDecayCron()`.
+
 ## References
 
 - [Stellar RPC getEvents Documentation](https://developers.stellar.org/docs/data/rpc/api-reference/methods/getEvents)

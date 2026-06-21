@@ -34,7 +34,8 @@ jest.unstable_mockModule("../db/connection.js", () => ({
   withTransaction: jest.fn(),
 }));
 
-const { WebhookService } = await import("../services/webhookService.js");
+const { WebhookService } =
+  await import("../services/webhookService.js");
 const { scoreReconciliationService } =
   await import("../services/scoreReconciliationService.js");
 const { runLoanDueCheck } = await import("../cron/loanCheckCron.js");

@@ -688,7 +688,7 @@ export const reprocessQuarantinedEvents = async (
       limit?: number;
     };
 
-    const parsedLimit = limit ? Math.min(limit, 500) : 50;
+    const parsedLimit = limit ?? 50;
 
     const rowsResult =
       ids && ids.length > 0

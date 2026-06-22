@@ -6,9 +6,8 @@ type Borrower = {
   last_repayment: string | null;
 };
 
-const mockGetInactiveBorrowers: jest.MockedFunction<
-  () => Promise<Borrower[]>
-> = jest.fn();
+const mockGetInactiveBorrowers: jest.MockedFunction<() => Promise<Borrower[]>> =
+  jest.fn();
 const mockApplyScoreDecay: jest.MockedFunction<
   (b: Borrower) => Promise<number>
 > = jest.fn();
@@ -40,7 +39,11 @@ describe("scoreDecayJob", () => {
 
   it("should apply score decay to inactive borrowers above minimum score", async () => {
     const borrowers: Borrower[] = [
-      { user_id: "user1", current_score: 700, last_repayment: "2024-01-01T00:00:00.000Z" },
+      {
+        user_id: "user1",
+        current_score: 700,
+        last_repayment: "2024-01-01T00:00:00.000Z",
+      },
       { user_id: "user2", current_score: 650, last_repayment: null },
     ];
     mockGetInactiveBorrowers.mockResolvedValue(borrowers);

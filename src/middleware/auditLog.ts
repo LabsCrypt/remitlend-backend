@@ -36,6 +36,7 @@ function extractTarget(req: Request): string | undefined {
   // Check common path parameters
   if (req.params.id) return `ID:${req.params.id}`;
   if (req.params.loanId) return `LoanID:${req.params.loanId}`;
+  if (req.params.disputeId) return `DisputeID:${req.params.disputeId}`;
   if (req.params.address) return `Address:${req.params.address}`;
   if (req.params.userId) return `UserID:${req.params.userId}`;
   if (req.params.borrower) return `Borrower:${req.params.borrower}`;

@@ -28,9 +28,8 @@ jest.unstable_mockModule("../utils/logger.js", () => ({
 }));
 
 const { query } = await import("../db/connection.js");
-const { notificationService } = await import(
-  "../services/notificationService.js"
-);
+const { notificationService } =
+  await import("../services/notificationService.js");
 const { cacheService } = await import("../services/cacheService.js");
 const { runLoanDueCheck } = await import("../cron/loanCheckCron.js");
 
@@ -63,9 +62,7 @@ describe("loanCheckCron - runLoanDueCheck", () => {
   it("should notify a borrower for a due loan", async () => {
     // First call: acquire cron lock
     // Second call: dedup guard for loan (returns true = key was set = not yet notified)
-    mockedSetNotExists
-      .mockResolvedValueOnce(true)
-      .mockResolvedValueOnce(true);
+    mockedSetNotExists.mockResolvedValueOnce(true).mockResolvedValueOnce(true);
 
     mockedQuery.mockResolvedValue({
       rows: [
@@ -98,9 +95,7 @@ describe("loanCheckCron - runLoanDueCheck", () => {
   it("should not re-notify a borrower already notified within the window", async () => {
     // First call: acquire cron lock (true)
     // Second call: dedup guard (false = key already exists = already notified)
-    mockedSetNotExists
-      .mockResolvedValueOnce(true)
-      .mockResolvedValueOnce(false);
+    mockedSetNotExists.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
 
     mockedQuery.mockResolvedValue({
       rows: [
@@ -132,9 +127,27 @@ describe("loanCheckCron - runLoanDueCheck", () => {
 
     mockedQuery.mockResolvedValue({
       rows: [
-        { loan_id: 1, address: "GA", amount: "100", approved_at: new Date().toISOString(), term_ledgers: 17280 },
-        { loan_id: 2, address: "GB", amount: "200", approved_at: new Date().toISOString(), term_ledgers: 17280 },
-        { loan_id: 3, address: "GC", amount: "300", approved_at: new Date().toISOString(), term_ledgers: 17280 },
+        {
+          loan_id: 1,
+          address: "GA",
+          amount: "100",
+          approved_at: new Date().toISOString(),
+          term_ledgers: 17280,
+        },
+        {
+          loan_id: 2,
+          address: "GB",
+          amount: "200",
+          approved_at: new Date().toISOString(),
+          term_ledgers: 17280,
+        },
+        {
+          loan_id: 3,
+          address: "GC",
+          amount: "300",
+          approved_at: new Date().toISOString(),
+          term_ledgers: 17280,
+        },
       ],
       rowCount: 3,
     } as any);
@@ -151,5 +164,29 @@ describe("loanCheckCron - runLoanDueCheck", () => {
     expect(mockedCreateNotification).toHaveBeenCalledWith(
       expect.objectContaining({ loanId: 3 }),
     );
+  });
+
+  it("should delete dedup key when notification fails so it can be retried", async () => {
+    mockedSetNotExists.mockResolvedValueOnce(true).mockResolvedValueOnce(true);
+
+    mockedQuery.mockResolvedValue({
+      rows: [
+        {
+          loan_id: 99,
+          address: "GFAIL",
+          amount: "500",
+          approved_at: new Date().toISOString(),
+          term_ledgers: 17280,
+        },
+      ],
+      rowCount: 1,
+    } as any);
+
+    mockedCreateNotification.mockRejectedValueOnce(new Error("send failed"));
+    mockedDelete.mockResolvedValue(undefined as any);
+
+    await runLoanDueCheck();
+
+    expect(mockedDelete).toHaveBeenCalledWith("loan_due_notified:99");
   });
 });

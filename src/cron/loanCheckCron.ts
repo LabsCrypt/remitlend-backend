@@ -65,14 +65,22 @@ export async function runLoanDueCheck(): Promise<void> {
         continue;
       }
 
-      await notificationService.createNotification({
-        userId: loan.address,
-        type: "repayment_due",
-        title: "Repayment Due Soon",
-        message: `Your repayment for loan #${loan.loan_id} of ${loan.amount} is due.`,
-        loanId: loan.loan_id,
-      });
-      notifiedCount++;
+      try {
+        await notificationService.createNotification({
+          userId: loan.address,
+          type: "repayment_due",
+          title: "Repayment Due Soon",
+          message: `Your repayment for loan #${loan.loan_id} of ${loan.amount} is due.`,
+          loanId: loan.loan_id,
+        });
+        notifiedCount++;
+      } catch (err) {
+        logger.error("Failed to send notification, clearing dedup key", {
+          loanId: loan.loan_id,
+          error: err,
+        });
+        await cacheService.delete(cacheKey).catch(() => {});
+      }
     }
 
     logger.info(

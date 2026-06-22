@@ -120,7 +120,7 @@ With Docker Compose from the repo root, the `backend` service runs `migrate:up` 
 
 ### Environment Variables
 
-Create a `.env` file in the backend directory:
+Create a `.env` file in the backend directory (see `.env.example` for all available variables):
 
 ```env
 # Server Configuration
@@ -128,20 +128,24 @@ PORT=3001
 
 # CORS Configuration
 FRONTEND_URL=http://localhost:3000
-# Optional backward-compatible fallback for multiple allowed origins during migration
-# CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3001
 
 # Stellar Configuration
 STELLAR_NETWORK=testnet
 STELLAR_RPC_URL=https://soroban-testnet.stellar.org
 STELLAR_NETWORK_PASSPHRASE=Test SDF Network ; September 2015
 LOAN_MANAGER_CONTRACT_ID=
-LOAN_MANAGER_ADMIN_SECRET=
-
-# Future: Add API keys for remittance services
-# WISE_API_KEY=your_key_here
-# WESTERN_UNION_API_KEY=your_key_here
+LOAN_MANAGER_ADMIN_SECRET=S...   # valid Stellar Ed25519 secret seed
 ```
+
+#### Secret format requirements
+
+The server validates secret format at startup and exits if any check fails:
+
+| Variable | Requirement |
+| --- | --- |
+| `JWT_SECRET` | At least 32 characters |
+| `INTERNAL_API_KEY` | At least 32 characters |
+| `LOAN_MANAGER_ADMIN_SECRET` | Valid Stellar Ed25519 secret seed (`S...`, 56 characters) |
 
 ## Available Scripts
 

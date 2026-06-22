@@ -37,9 +37,7 @@ function validateSecretFormat(errors: string[]): void {
 
   const adminSecret = process.env.LOAN_MANAGER_ADMIN_SECRET?.trim();
   if (adminSecret && !StrKey.isValidEd25519SecretSeed(adminSecret)) {
-    errors.push(
-      `LOAN_MANAGER_ADMIN_SECRET is not a valid Stellar secret key`,
-    );
+    errors.push(`LOAN_MANAGER_ADMIN_SECRET is not a valid Stellar secret key`);
   }
 }
 

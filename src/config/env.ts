@@ -1,11 +1,11 @@
 import logger from "../utils/logger.js";
 
 /**
- * List of environment variables required for the application to function.
- * If any of these are missing or empty on startup, the server will exit immediately
- * with a clear error message.
+ * Environment variables that must be present and non-empty before the API starts.
+ * Keep this list in sync with the mandatory-startup table in README.md and the
+ * required entries in .env.example.
  */
-const REQUIRED_ENV_VARS = [
+export const REQUIRED_ENV_VARS = [
   "DATABASE_URL",
   "REDIS_URL",
   "JWT_SECRET",
@@ -20,7 +20,7 @@ const REQUIRED_ENV_VARS = [
   "SCORE_DELTA_REPAY",
   "SCORE_DELTA_DEFAULT",
   "SCORE_DELTA_LATE",
-];
+] as const;
 
 /**
  * Validates that all critical environment variables are set and non-empty.

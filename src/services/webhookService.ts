@@ -109,6 +109,42 @@ interface PreparedWebhookPayload {
   payload: Record<string, unknown>;
 }
 
+/**
+ * Creates the exact value sent in the x-remitlend-signature header.
+ * The signature is an HMAC-SHA256 hex digest over the raw JSON request body
+ * using the webhook subscription secret as the key.
+ */
+export function createWebhookSignature(body: string, secret: string): string {
+  return crypto.createHmac("sha256", secret).update(body).digest("hex");
+}
+
+/**
+ * Verifies a received x-remitlend-signature header against the raw request body.
+ * Consumers should run this before parsing or mutating the JSON payload.
+ */
+export function verifyWebhookSignature(
+  body: string,
+  signature: string | undefined,
+  secret: string,
+): boolean {
+  if (!signature) {
+    return false;
+  }
+
+  try {
+    const expected = Buffer.from(createWebhookSignature(body, secret), "hex");
+    const received = Buffer.from(signature, "hex");
+
+    if (expected.length !== received.length) {
+      return false;
+    }
+
+    return crypto.timingSafeEqual(expected, received);
+  } catch {
+    return false;
+  }
+}
+
 function parsePositiveInt(value: string | undefined, fallback: number): number {
   const parsed = Number.parseInt(value ?? "", 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
@@ -356,9 +392,7 @@ export class WebhookService {
     const preparedPayload = prepareWebhookPayload(payload);
     const body = preparedPayload.body;
 
-    const signature = secret
-      ? crypto.createHmac("sha256", secret).update(body).digest("hex")
-      : undefined;
+    const signature = secret ? createWebhookSignature(body, secret) : undefined;
 
     let response: Response | null = null;
 
@@ -594,9 +628,7 @@ export class WebhookService {
   ): Promise<void> {
     const body = payload.body;
 
-    const signature = secret
-      ? crypto.createHmac("sha256", secret).update(body).digest("hex")
-      : undefined;
+    const signature = secret ? createWebhookSignature(body, secret) : undefined;
 
     try {
       const response = await postWebhook(callbackUrl, body, signature);

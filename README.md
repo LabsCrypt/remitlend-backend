@@ -141,10 +141,10 @@ LOAN_MANAGER_ADMIN_SECRET=S...   # valid Stellar Ed25519 secret seed
 
 The server validates secret format at startup and exits if any check fails:
 
-| Variable | Requirement |
-| --- | --- |
-| `JWT_SECRET` | At least 32 characters |
-| `INTERNAL_API_KEY` | At least 32 characters |
+| Variable                    | Requirement                                               |
+| --------------------------- | --------------------------------------------------------- |
+| `JWT_SECRET`                | At least 32 characters                                    |
+| `INTERNAL_API_KEY`          | At least 32 characters                                    |
 | `LOAN_MANAGER_ADMIN_SECRET` | Valid Stellar Ed25519 secret seed (`S...`, 56 characters) |
 
 ## Available Scripts

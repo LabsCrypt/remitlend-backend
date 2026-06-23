@@ -8,11 +8,16 @@ export const shorthands = undefined;
  * @returns {Promise<void> | void}
  */
 export const up = (pgm) => {
-  pgm.addColumns("user_profiles", {
-    email_enabled: { type: "boolean", notNull: true, default: false },
-    sms_enabled: { type: "boolean", notNull: true, default: false },
-    phone: { type: "varchar(20)" },
-  });
+  // 1773 already adds these notification columns, so guard against re-adding.
+  pgm.addColumns(
+    "user_profiles",
+    {
+      email_enabled: { type: "boolean", notNull: true, default: false },
+      sms_enabled: { type: "boolean", notNull: true, default: false },
+      phone: { type: "varchar(20)" },
+    },
+    { ifNotExists: true },
+  );
 };
 
 /**

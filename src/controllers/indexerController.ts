@@ -7,7 +7,6 @@ import {
 } from "../services/eventIndexer.js";
 import { cacheService } from "../services/cacheService.js";
 import {
-  SUPPORTED_WEBHOOK_EVENT_TYPES,
   webhookService,
   type WebhookEventType,
 } from "../services/webhookService.js";
@@ -17,6 +16,10 @@ import {
   parseQueryParams,
 } from "../utils/pagination.js";
 import { parseCappedLimit } from "../utils/queryHelpers.js";
+import {
+  assertCallbackUrlAllowed,
+  SsrfValidationError,
+} from "../utils/ssrfGuard.js";
 import logger from "../utils/logger.js";
 import { getStellarRpcUrl } from "../config/stellar.js";
 import { sorobanService } from "../services/sorobanService.js";
@@ -498,6 +501,20 @@ export const createWebhookSubscription = async (
       eventTypes: WebhookEventType[];
       secret?: string;
     };
+
+    // Scheme/format and eventTypes are validated by the zod schema upstream;
+    // this resolves DNS and blocks private/reserved addresses (SSRF).
+    try {
+      await assertCallbackUrlAllowed(callbackUrl);
+    } catch (error) {
+      if (error instanceof SsrfValidationError) {
+        return res.status(400).json({
+          success: false,
+          message: error.message,
+        });
+      }
+      throw error;
+    }
 
     const subscription = await webhookService.registerSubscription(
       secret

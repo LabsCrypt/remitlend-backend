@@ -8,21 +8,31 @@ export const shorthands = undefined;
  * @returns {Promise<void> | void}
  */
 export const up = (pgm) => {
-  // Add payload column to webhook_deliveries table
-  pgm.addColumn("webhook_deliveries", {
-    payload: {
-      type: "jsonb",
-      notNull: false,
+  // Add payload column to webhook_deliveries table.
+  // 1772 already creates this column, so guard against re-adding it.
+  pgm.addColumn(
+    "webhook_deliveries",
+    {
+      payload: {
+        type: "jsonb",
+        notNull: false,
+      },
     },
-  });
+    { ifNotExists: true },
+  );
 
-  // Add next_retry_at column to track when to retry
-  pgm.addColumn("webhook_deliveries", {
-    next_retry_at: {
-      type: "timestamp",
-      notNull: false,
+  // Add next_retry_at column to track when to retry.
+  // 1772 already creates this column, so guard against re-adding it.
+  pgm.addColumn(
+    "webhook_deliveries",
+    {
+      next_retry_at: {
+        type: "timestamp",
+        notNull: false,
+      },
     },
-  });
+    { ifNotExists: true },
+  );
 
   // Add index for efficient retry polling
   pgm.createIndex("webhook_deliveries", ["next_retry_at"], {

@@ -1,7 +1,7 @@
 /**
  * @param { import("node-pg-migrate").MigrationBuilder } @param pgm {import("node-pg-migrate").MigrationBuilder}
  */
-exports.up = (pgm) => {
+export const up = (pgm) => {
   pgm.createTable("transaction_submissions", {
     id: {
       type: "serial",
@@ -52,6 +52,18 @@ exports.up = (pgm) => {
   pgm.createIndex("transaction_submissions", ["status"]);
   pgm.createIndex("transaction_submissions", ["transaction_type"]);
 
+  // Ensure the shared updated_at trigger function exists (not created by any
+  // earlier migration), otherwise the trigger below cannot be created.
+  pgm.sql(`
+    CREATE OR REPLACE FUNCTION update_updated_at_column()
+    RETURNS trigger AS $$
+    BEGIN
+      NEW.updated_at = NOW();
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql;
+  `);
+
   // Trigger to update updated_at timestamp
   pgm.createTrigger("transaction_submissions", "update_updated_at", {
     when: "BEFORE",
@@ -63,6 +75,6 @@ exports.up = (pgm) => {
 /**
  * @param { import("node-pg-migrate").MigrationBuilder } @param pgm {import("node-pg-migrate").MigrationBuilder}
  */
-exports.down = (pgm) => {
+export const down = (pgm) => {
   pgm.dropTable("transaction_submissions");
 };

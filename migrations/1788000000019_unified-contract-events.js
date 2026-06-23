@@ -12,32 +12,15 @@ export const up = (pgm) => {
   // 3. Make address nullable (for events like YieldDistributed that may not have a user address)
   pgm.alterColumn("contract_events", "address", { notNull: false });
 
-  // 4. Rename indexes to match the new table and column names
-  pgm.renameIndex(
-    "contract_events",
-    "idx_loan_events_borrower_event_type",
-    "idx_contract_events_address_event_type",
-  );
-  pgm.renameIndex(
-    "contract_events",
-    "idx_loan_events_loan_id_event_type",
-    "idx_contract_events_loan_id_event_type",
-  );
-  pgm.renameIndex(
-    "contract_events",
-    "idx_loan_events_event_type_loan_id",
-    "idx_contract_events_event_type_loan_id",
-  );
-  pgm.renameIndex(
-    "contract_events",
-    "idx_loan_events_ledger",
-    "idx_contract_events_ledger",
-  );
-  pgm.renameIndex(
-    "contract_events",
-    "idx_loan_events_pool_deposits_withdraws",
-    "idx_contract_events_pool_deposits_withdraws",
-  );
+  // 4. Rename indexes to match the new table and column names.
+  // node-pg-migrate has no renameIndex helper, so use raw ALTER INDEX.
+  pgm.sql(`
+    ALTER INDEX IF EXISTS idx_loan_events_borrower_event_type RENAME TO idx_contract_events_address_event_type;
+    ALTER INDEX IF EXISTS idx_loan_events_loan_id_event_type RENAME TO idx_contract_events_loan_id_event_type;
+    ALTER INDEX IF EXISTS idx_loan_events_event_type_loan_id RENAME TO idx_contract_events_event_type_loan_id;
+    ALTER INDEX IF EXISTS idx_loan_events_ledger RENAME TO idx_contract_events_ledger;
+    ALTER INDEX IF EXISTS idx_loan_events_pool_deposits_withdraws RENAME TO idx_contract_events_pool_deposits_withdraws;
+  `);
 
   // Rename single-column indexes from initial schema (if they exist)
   pgm.sql(`
@@ -81,32 +64,14 @@ export const down = (pgm) => {
 
   pgm.renameTable("contract_events", "loan_events");
 
-  // Revert index names
-  pgm.renameIndex(
-    "loan_events",
-    "idx_contract_events_address_event_type",
-    "idx_loan_events_borrower_event_type",
-  );
-  pgm.renameIndex(
-    "loan_events",
-    "idx_contract_events_loan_id_event_type",
-    "idx_loan_events_loan_id_event_type",
-  );
-  pgm.renameIndex(
-    "loan_events",
-    "idx_contract_events_event_type_loan_id",
-    "idx_loan_events_event_type_loan_id",
-  );
-  pgm.renameIndex(
-    "loan_events",
-    "idx_contract_events_ledger",
-    "idx_loan_events_ledger",
-  );
-  pgm.renameIndex(
-    "loan_events",
-    "idx_contract_events_pool_deposits_withdraws",
-    "idx_loan_events_pool_deposits_withdraws",
-  );
+  // Revert index names (raw ALTER INDEX; no renameIndex helper exists)
+  pgm.sql(`
+    ALTER INDEX IF EXISTS idx_contract_events_address_event_type RENAME TO idx_loan_events_borrower_event_type;
+    ALTER INDEX IF EXISTS idx_contract_events_loan_id_event_type RENAME TO idx_loan_events_loan_id_event_type;
+    ALTER INDEX IF EXISTS idx_contract_events_event_type_loan_id RENAME TO idx_loan_events_event_type_loan_id;
+    ALTER INDEX IF EXISTS idx_contract_events_ledger RENAME TO idx_loan_events_ledger;
+    ALTER INDEX IF EXISTS idx_contract_events_pool_deposits_withdraws RENAME TO idx_loan_events_pool_deposits_withdraws;
+  `);
 
   pgm.sql(`
     ALTER INDEX IF EXISTS contract_events_event_type_index RENAME TO loan_events_event_type_index;

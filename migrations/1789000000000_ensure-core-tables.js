@@ -25,11 +25,13 @@ export const up = (pgm) => {
     END $$;
   `);
 
-  // Ensure loan_events table matches requested schema
+  // Ensure loan_events relation exists. Use to_regclass (not pg_tables) so the
+  // backward-compat loan_events VIEW created in 1788 also counts as existing;
+  // otherwise this would try to CREATE TABLE over the view and fail.
   pgm.sql(`
     DO $$
     BEGIN
-      IF NOT EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = 'loan_events') THEN
+      IF to_regclass('public.loan_events') IS NULL THEN
         CREATE TABLE loan_events (
           id SERIAL PRIMARY KEY,
           loan_id INTEGER,

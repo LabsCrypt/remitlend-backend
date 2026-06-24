@@ -306,7 +306,11 @@ describe("Loan Dispute/Appeal Mechanism", () => {
     const res = await request(app)
       .post(`/api/admin/disputes/${disputeId}/resolve`)
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ action: "confirm", resolution: "JWT valid default.", token: "super_secret_token" });
+      .send({
+        action: "confirm",
+        resolution: "JWT valid default.",
+        token: "super_secret_token",
+      });
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
@@ -317,7 +321,8 @@ describe("Loan Dispute/Appeal Mechanism", () => {
     const calls = mockQuery.mock.calls;
     const auditLogCall = calls.find(
       (call: any[]) =>
-        typeof call[0] === "string" && call[0].includes("INSERT INTO audit_logs"),
+        typeof call[0] === "string" &&
+        call[0].includes("INSERT INTO audit_logs"),
     );
 
     expect(auditLogCall).toBeDefined();
@@ -325,7 +330,7 @@ describe("Loan Dispute/Appeal Mechanism", () => {
       expect(auditLogCall[1][0]).toBe(TEST_PUBLIC_KEY);
       expect(auditLogCall[1][1]).toContain("POST /disputes");
       expect(auditLogCall[1][2]).toBe(`DisputeID:${disputeId}`);
-      
+
       const payloadString = auditLogCall[1][3];
       expect(payloadString).toContain("JWT valid default.");
       expect(payloadString).toContain("[REDACTED]");

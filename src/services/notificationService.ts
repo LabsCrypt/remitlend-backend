@@ -509,6 +509,16 @@ export async function runNotificationCleanup(): Promise<void> {
   await runCleanup();
 }
 
+function runScheduledCleanup(): void {
+  void (async () => {
+    try {
+      await runCleanup();
+    } catch (error) {
+      logger.error("Notification cleanup scheduled run failed", { error });
+    }
+  })();
+}
+
 /**
  * Starts a periodic scheduler to clean up old notifications based on retention policy.
  */
@@ -529,10 +539,10 @@ export function startNotificationCleanupScheduler(): void {
   );
 
   // Run once immediately on start to clear any backlog
-  void runCleanup();
+  runScheduledCleanup();
 
   cleanupInterval = setInterval(() => {
-    void runCleanup();
+    runScheduledCleanup();
   }, intervalMs);
 
   logger.info("Notification cleanup scheduler started", {

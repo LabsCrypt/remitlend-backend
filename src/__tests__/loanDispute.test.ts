@@ -280,4 +280,61 @@ describe("Loan Dispute/Appeal Mechanism", () => {
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
   });
+
+  it("should allow admin to resolve dispute via JWT and log audit", async () => {
+    const adminToken = jwt.sign(
+      { publicKey: TEST_PUBLIC_KEY, role: "admin", scopes: [] },
+      process.env.JWT_SECRET!,
+      { algorithm: "HS256", expiresIn: "1h" },
+    );
+
+    mockQuery
+      .mockResolvedValueOnce(dbOk()) // [1] INSERT audit_logs (middleware runs first)
+      .mockResolvedValueOnce(
+        dbRows([
+          {
+            id: disputeId,
+            loan_id: LOAN_ID,
+            borrower: TEST_PUBLIC_KEY,
+            status: "open",
+          },
+        ]),
+      ) // [2] SELECT dispute
+      .mockResolvedValueOnce(dbOk("UPDATE")) // [3] UPDATE dispute
+      .mockResolvedValueOnce(dbOk()); // [4] INSERT contract_events
+
+    const res = await request(app)
+      .post(`/api/admin/disputes/${disputeId}/resolve`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        action: "confirm",
+        resolution: "JWT valid default.",
+        token: "super_secret_token",
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+
+    // Wait for the async audit log query to fire
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const calls = mockQuery.mock.calls;
+    const auditLogCall = calls.find(
+      (call: any[]) =>
+        typeof call[0] === "string" &&
+        call[0].includes("INSERT INTO audit_logs"),
+    );
+
+    expect(auditLogCall).toBeDefined();
+    if (auditLogCall) {
+      expect(auditLogCall[1][0]).toBe(TEST_PUBLIC_KEY);
+      expect(auditLogCall[1][1]).toContain("POST /disputes");
+      expect(auditLogCall[1][2]).toBe(`DisputeID:${disputeId}`);
+
+      const payloadString = auditLogCall[1][3];
+      expect(payloadString).toContain("JWT valid default.");
+      expect(payloadString).toContain("[REDACTED]");
+      expect(payloadString).not.toContain("super_secret_token");
+    }
+  });
 });

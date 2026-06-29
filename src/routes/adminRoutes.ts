@@ -106,12 +106,14 @@ router.post(
   "/disputes/:disputeId/resolve",
   requireJwtAuth,
   requireRoles("admin"),
+  auditLog,
   resolveLoanDispute,
 );
 router.post(
   "/disputes/:disputeId/reject",
   requireJwtAuth,
   requireRoles("admin"),
+  auditLog,
   rejectLoanDispute,
 );
 

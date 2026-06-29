@@ -15,6 +15,8 @@ import {
   requireWalletOwnership,
 } from "../middleware/jwtAuth.js";
 import { requireLoanBorrowerAccess } from "../middleware/loanAccess.js";
+import { validateBody } from "../middleware/validation.js";
+import { createWebhookSubscriptionSchema } from "../schemas/indexerSchemas.js";
 
 const router = Router();
 
@@ -209,7 +211,12 @@ router.get("/webhooks", requireApiKey, listWebhookSubscriptions);
  *       401:
  *         description: Missing or invalid API key
  */
-router.post("/webhooks", requireApiKey, createWebhookSubscription);
+router.post(
+  "/webhooks",
+  requireApiKey,
+  validateBody(createWebhookSubscriptionSchema),
+  createWebhookSubscription,
+);
 
 /**
  * @swagger

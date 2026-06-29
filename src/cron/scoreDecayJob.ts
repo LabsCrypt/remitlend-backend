@@ -1,23 +1,64 @@
-// Cron job to apply score decay to inactive borrowers
-// Run this script periodically (e.g., daily) via a scheduler or as part of backend startup
-
+import cron from "node-cron";
 import {
   getInactiveBorrowers,
   applyScoreDecay,
 } from "../services/scoreDecayService.js";
+import logger from "../utils/logger.js";
+import { cacheService } from "../services/cacheService.js";
 
-async function runScoreDecayJob() {
+const LOCK_KEY = "score_decay_job:running";
+const LOCK_TTL_SECONDS = 600; // 10 minutes
+
+export async function runScoreDecayJob(): Promise<void> {
+  let lockAcquired = false;
   try {
-    const borrowers = await getInactiveBorrowers();
-    for (const borrower of borrowers) {
-      await applyScoreDecay(borrower);
-    }
-    console.log(
-      `Score decay applied to ${borrowers.length} inactive borrowers.`,
+    const lockValue = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    lockAcquired = await cacheService.setNotExists(
+      LOCK_KEY,
+      lockValue,
+      LOCK_TTL_SECONDS,
     );
-  } catch (err) {
-    console.error("Score decay job failed:", err);
+  } catch (error) {
+    logger.error("Failed to acquire score decay job lock", { error });
+  }
+
+  if (!lockAcquired) {
+    logger.warn(
+      "Score decay job skipped - another instance is already running",
+    );
+    return;
+  }
+
+  try {
+    logger.info("Running score decay job...");
+
+    const borrowers = await getInactiveBorrowers();
+    let decayedCount = 0;
+
+    for (const borrower of borrowers) {
+      if (borrower.current_score > 300) {
+        await applyScoreDecay(borrower);
+        decayedCount++;
+      }
+    }
+
+    logger.info(
+      `Score decay job completed. Decayed ${decayedCount} of ${borrowers.length} inactive borrowers.`,
+    );
+  } catch (error) {
+    logger.error("Error in score decay job", { error });
+  } finally {
+    try {
+      await cacheService.delete(LOCK_KEY);
+    } catch (error) {
+      logger.error("Failed to release score decay job lock", { error });
+    }
   }
 }
 
-export default runScoreDecayJob;
+export function startScoreDecayCron(): void {
+  cron.schedule("0 2 * * *", () => {
+    void runScoreDecayJob();
+  });
+  logger.info("Score decay cron scheduled (daily at 02:00)");
+}

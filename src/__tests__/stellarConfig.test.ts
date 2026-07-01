@@ -60,6 +60,11 @@ describe("stellar config", () => {
 
   it("rejects passphrase/network mismatches", () => {
     process.env.STELLAR_NETWORK = "mainnet";
+    // Use a mainnet-consistent RPC URL so the RPC-vs-network check passes and
+    // the passphrase-mismatch branch is the one that actually throws. Otherwise
+    // an inherited testnet STELLAR_RPC_URL (e.g. from CI env) would trip the RPC
+    // check first and mask what this test asserts on.
+    process.env.STELLAR_RPC_URL = "https://soroban-mainnet.stellar.org";
     process.env.STELLAR_NETWORK_PASSPHRASE = Networks.TESTNET;
 
     expect(() => getStellarConfig()).toThrow(

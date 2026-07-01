@@ -563,7 +563,7 @@ describe("Admin Dispute Controller - Happy Path Scenarios", () => {
       rowCount: 1,
     });
 
-    let getResponse = await request(app)
+    const getResponse = await request(app)
       .get("/api/admin/disputes/1")
       .set(bearer(TEST_ADMIN, "admin"));
 
@@ -580,7 +580,7 @@ describe("Admin Dispute Controller - Happy Path Scenarios", () => {
       rowCount: 1,
     });
 
-    let resolveResponse = await request(app)
+    const resolveResponse = await request(app)
       .post("/api/admin/disputes/1/resolve")
       .set(bearer(TEST_ADMIN, "admin"))
       .send({
@@ -615,7 +615,8 @@ describe("Admin Dispute Controller - Happy Path Scenarios", () => {
       .set(bearer(TEST_ADMIN))
       .send({
         action: "reverse",
-        resolution: "Payment was delayed due to network issue, reversal approved",
+        resolution:
+          "Payment was delayed due to network issue, reversal approved",
       });
 
     expect(response.status).toBe(200);

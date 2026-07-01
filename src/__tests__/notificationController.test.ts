@@ -141,10 +141,9 @@ describe("GET /api/notifications", () => {
       .set(bearer(TEST_USER));
 
     expect(response.status).toBe(200);
-    expect(mockNotificationService.getNotificationsForUser).toHaveBeenCalledWith(
-      TEST_USER,
-      25,
-    );
+    expect(
+      mockNotificationService.getNotificationsForUser,
+    ).toHaveBeenCalledWith(TEST_USER, 25);
   });
 
   it("should cap limit at 100", async () => {
@@ -164,10 +163,9 @@ describe("GET /api/notifications", () => {
       .set(bearer(TEST_USER));
 
     expect(response.status).toBe(200);
-    expect(mockNotificationService.getNotificationsForUser).toHaveBeenCalledWith(
-      TEST_USER,
-      100,
-    );
+    expect(
+      mockNotificationService.getNotificationsForUser,
+    ).toHaveBeenCalledWith(TEST_USER, 100);
   });
 
   it("should include unread count", async () => {
@@ -316,9 +314,7 @@ describe("POST /api/notifications/mark-all-read", () => {
 
     expect(response.status).toBe(200);
     expect(response.body.success).toBe(true);
-    expect(mockNotificationService.markAllRead).toHaveBeenCalledWith(
-      TEST_USER,
-    );
+    expect(mockNotificationService.markAllRead).toHaveBeenCalledWith(TEST_USER);
   });
 
   it("should enforce user ownership - only mark own notifications", async () => {
@@ -329,9 +325,7 @@ describe("POST /api/notifications/mark-all-read", () => {
       .set(bearer(TEST_USER));
 
     // Service should be called with the authenticated user's ID
-    expect(mockNotificationService.markAllRead).toHaveBeenCalledWith(
-      TEST_USER,
-    );
+    expect(mockNotificationService.markAllRead).toHaveBeenCalledWith(TEST_USER);
     expect(response.status).toBe(200);
   });
 
@@ -392,10 +386,9 @@ describe("GET /api/notifications/stream", () => {
       .set(bearer(TEST_USER));
 
     expect(response.status).toBe(200);
-    expect(mockNotificationService.getNotificationsForUser).toHaveBeenCalledWith(
-      TEST_USER,
-      50,
-    );
+    expect(
+      mockNotificationService.getNotificationsForUser,
+    ).toHaveBeenCalledWith(TEST_USER, 50);
   });
 
   it("should set correct SSE headers", async () => {
@@ -418,9 +411,7 @@ describe("GET /api/notifications/stream", () => {
     mockNotificationService.getNotificationsForUser.mockResolvedValueOnce([]);
     mockNotificationService.subscribe.mockReturnValueOnce(mockUnsubscribe);
 
-    await request(app)
-      .get("/api/notifications/stream")
-      .set(bearer(TEST_USER));
+    await request(app).get("/api/notifications/stream").set(bearer(TEST_USER));
 
     expect(mockNotificationService.subscribe).toHaveBeenCalledWith(
       TEST_USER,
@@ -454,10 +445,9 @@ describe("Notification Controller - Authorization", () => {
       .set(bearer(TEST_USER));
 
     // Should be called with TEST_USER, not OTHER_USER
-    expect(mockNotificationService.getNotificationsForUser).toHaveBeenCalledWith(
-      TEST_USER,
-      expect.any(Number),
-    );
+    expect(
+      mockNotificationService.getNotificationsForUser,
+    ).toHaveBeenCalledWith(TEST_USER, expect.any(Number));
   });
 
   it("should enforce user isolation on mark-read", async () => {
@@ -483,9 +473,7 @@ describe("Notification Controller - Authorization", () => {
       .set(bearer(TEST_USER));
 
     // Should be called with TEST_USER
-    expect(mockNotificationService.markAllRead).toHaveBeenCalledWith(
-      TEST_USER,
-    );
+    expect(mockNotificationService.markAllRead).toHaveBeenCalledWith(TEST_USER);
   });
 
   it("should enforce user isolation on stream", async () => {
@@ -493,9 +481,7 @@ describe("Notification Controller - Authorization", () => {
     mockNotificationService.getNotificationsForUser.mockResolvedValueOnce([]);
     mockNotificationService.subscribe.mockReturnValueOnce(mockUnsubscribe);
 
-    await request(app)
-      .get("/api/notifications/stream")
-      .set(bearer(TEST_USER));
+    await request(app).get("/api/notifications/stream").set(bearer(TEST_USER));
 
     // Should subscribe with TEST_USER
     expect(mockNotificationService.subscribe).toHaveBeenCalledWith(

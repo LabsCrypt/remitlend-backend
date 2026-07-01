@@ -1,30 +1,30 @@
 # Controller Tests Implementation Summary
 
 ## Overview
+
 Successfully implemented comprehensive controller-level tests for all required endpoints per issue #19, following the supertest-based testing pattern established in the codebase.
 
 ## Test Files Created
 
 ### 1. remittanceController.test.ts
+
 **Location**: `src/__tests__/remittanceController.test.ts`
-**Coverage**: 
+**Coverage**:
+
 - ✅ POST /api/remittances - Create remittance
   - Unauthorized rejection (401)
   - Happy path creation with auth (201)
   - Validation (missing recipientAddress, amount)
-  
 - ✅ GET /api/remittances - List user's remittances
   - Unauthorized rejection (401)
   - Empty list response
   - Full list with pagination
   - Status filtering
-  
 - ✅ GET /api/remittances/:id - Get single remittance
   - Unauthorized rejection (401)
   - Forbidden access for non-owner (403)
   - Happy path retrieval
   - 404 handling
-  
 - ✅ POST /api/remittances/:id/submit - Submit signed transaction
   - Unauthorized rejection (401)
   - Forbidden access for non-owner (403)
@@ -33,6 +33,7 @@ Successfully implemented comprehensive controller-level tests for all required e
   - Error handling with failed status update
 
 **Authorization & Ownership Tests**:
+
 - ✅ Wallet ownership enforcement on create
 - ✅ Wallet ownership enforcement on get
 - ✅ Wallet ownership enforcement on submit
@@ -42,8 +43,10 @@ Successfully implemented comprehensive controller-level tests for all required e
 ---
 
 ### 2. scoreController.test.ts
+
 **Location**: `src/__tests__/scoreController.test.ts`
 **Coverage**:
+
 - ✅ GET /api/score/:userId - Get user's score
   - Unauthorized rejection (401)
   - Forbidden access when userId ≠ JWT wallet (403)
@@ -51,7 +54,6 @@ Successfully implemented comprehensive controller-level tests for all required e
   - Default score (500) when no score exists
   - Credit band classification (Excellent, Good, Fair, Poor)
   - Score factors in response
-  
 - ✅ POST /api/score/update - Update score (API key protected)
   - Missing/invalid API key rejection (401)
   - On-time repayment (+15 delta)
@@ -60,7 +62,6 @@ Successfully implemented comprehensive controller-level tests for all required e
   - New user score creation
   - Cache invalidation
   - Validation (missing userId, onTime)
-  
 - ✅ GET /api/score/:userId/breakdown - Score breakdown
   - Unauthorized rejection (401)
   - Forbidden access when userId ≠ JWT wallet (403)
@@ -69,11 +70,13 @@ Successfully implemented comprehensive controller-level tests for all required e
   - Payment history timeline inclusion
 
 **Authorization & Ownership Tests**:
+
 - ✅ Wallet-param-matches-JWT enforcement on getScore
 - ✅ Wallet-param-matches-JWT enforcement on getScoreBreakdown
 - ✅ API key requirement for updateScore (not JWT)
 
 **Credit Band Classification Tests**:
+
 - ✅ 8 parameterized test cases covering all bands and boundaries
 
 **Test Count**: 30+ tests covering unauthorized, forbidden, happy-path, and credit band scenarios
@@ -81,8 +84,10 @@ Successfully implemented comprehensive controller-level tests for all required e
 ---
 
 ### 3. adminDisputeController.test.ts
+
 **Location**: `src/__tests__/adminDisputeController.test.ts`
 **Coverage**:
+
 - ✅ GET /api/admin/disputes - List disputes
   - Unauthorized rejection (401)
   - Admin role enforcement (403 for non-admin)
@@ -90,13 +95,11 @@ Successfully implemented comprehensive controller-level tests for all required e
   - Empty list handling
   - Status filtering
   - Invalid status rejection
-  
 - ✅ GET /api/admin/disputes/:disputeId - Get dispute
   - Unauthorized rejection (401)
   - Admin role enforcement (403)
   - Dispute details retrieval
   - 404 for nonexistent dispute
-  
 - ✅ POST /api/admin/disputes/:disputeId/resolve - Resolve dispute
   - Unauthorized rejection (401)
   - Admin role enforcement (403)
@@ -106,7 +109,6 @@ Successfully implemented comprehensive controller-level tests for all required e
   - Resolution reason validation (min 5 chars)
   - Already-resolved dispute rejection (404)
   - Event logging verification
-  
 - ✅ POST /api/admin/disputes/:disputeId/reject - Reject dispute
   - Unauthorized rejection (401)
   - Admin role enforcement (403)
@@ -116,10 +118,12 @@ Successfully implemented comprehensive controller-level tests for all required e
   - Status update to "rejected" verification
 
 **Authorization Tests**:
+
 - ✅ Admin role enforcement on all endpoints
 - ✅ Non-admin user rejection (borrower role)
 
 **Happy Path Scenarios**:
+
 - ✅ Complete flow: open → resolve (confirm)
 - ✅ Complete flow: open → resolve (reverse)
 - ✅ Complete flow: open → reject
@@ -129,8 +133,10 @@ Successfully implemented comprehensive controller-level tests for all required e
 ---
 
 ### 4. notificationController.test.ts
+
 **Location**: `src/__tests__/notificationController.test.ts`
 **Coverage**:
+
 - ✅ GET /api/notifications - Get notifications
   - Unauthorized rejection (401)
   - Notifications for authenticated user
@@ -138,7 +144,6 @@ Successfully implemented comprehensive controller-level tests for all required e
   - Limit parameter handling
   - Limit capping at 100
   - Unread count inclusion
-  
 - ✅ POST /api/notifications/mark-read - Mark specific as read
   - Unauthorized rejection (401)
   - Mark multiple notifications
@@ -148,13 +153,11 @@ Successfully implemented comprehensive controller-level tests for all required e
   - Non-array ids rejection
   - Missing ids rejection
   - User ownership enforcement
-  
 - ✅ POST /api/notifications/mark-all-read - Mark all as read
   - Unauthorized rejection (401)
   - Mark all as read
   - User ownership enforcement
   - Empty unread list handling
-  
 - ✅ GET /api/notifications/stream - SSE stream
   - Unauthorized rejection (401)
   - SSE connection establishment
@@ -164,12 +167,14 @@ Successfully implemented comprehensive controller-level tests for all required e
   - Empty notification list handling
 
 **Authorization & Ownership Tests**:
+
 - ✅ User isolation on get notifications
 - ✅ User isolation on mark-read
 - ✅ User isolation on mark-all-read
 - ✅ User isolation on stream
 
 **Happy Path Scenarios**:
+
 - ✅ Complete flow: get → mark-read → mark-all-read
 - ✅ Stream with initial unread notifications
 
@@ -178,8 +183,10 @@ Successfully implemented comprehensive controller-level tests for all required e
 ---
 
 ### 5. authController.test.ts
+
 **Location**: `src/__tests__/authController.test.ts`
 **Coverage**:
+
 - ✅ POST /api/auth/challenge - Request challenge
   - Valid public key generates challenge
   - Challenge includes message, nonce, timestamp
@@ -189,7 +196,6 @@ Successfully implemented comprehensive controller-level tests for all required e
   - Empty publicKey rejection
   - Unique nonces on multiple requests
   - Expiration in milliseconds (5 minutes)
-  
 - ✅ POST /api/auth/login - Exchange signature for JWT
   - Missing publicKey rejection
   - Missing message rejection
@@ -206,10 +212,12 @@ Successfully implemented comprehensive controller-level tests for all required e
   - Invalid public key format rejection
 
 **Authorization Tests**:
+
 - ✅ Challenge endpoint accessible without auth (public)
 - ✅ Login endpoint accessible without auth (public)
 
 **Happy Path Scenarios**:
+
 - ✅ Complete flow: challenge → login
 - ✅ Rejection of stale messages (>5 min old)
 - ✅ Multiple independent auth flows for different users
@@ -221,24 +229,29 @@ Successfully implemented comprehensive controller-level tests for all required e
 ## Test Framework & Patterns
 
 ### Mocking Strategy
+
 All tests follow the established pattern in the codebase:
+
 - Jest unstable_mockModule for service/connection mocking
 - Direct mock function types with jest.fn<T>()
 - MockedFunction types for accurate type safety
 
 ### Authentication Testing
+
 - ✅ JWT token generation with public keys
 - ✅ Bearer header format testing
 - ✅ Admin role verification with ADMIN_WALLETS env var
 - ✅ API key header testing (x-api-key)
 
 ### Authorization Patterns
+
 - ✅ Ownership checks (wallet address matching)
 - ✅ Role-based access control (admin role)
 - ✅ Scope requirements (read:score, write:remittances, etc.)
 - ✅ Parameter-JWT matching (requireWalletParamMatchesJwt)
 
 ### Error Response Testing
+
 - ✅ 401 Unauthorized
 - ✅ 403 Forbidden
 - ✅ 404 Not Found
@@ -250,22 +263,26 @@ All tests follow the established pattern in the codebase:
 ## Acceptance Criteria Compliance
 
 ✅ **Add supertest-based tests for remittance**
+
 - Create/submit ownership and status checks: 7 tests
 - Covers unauthorized, forbidden, happy-path cases
 
 ✅ **Add tests for score endpoints**
+
 - Wallet-param-matches-JWT enforcement: 6 tests
 - Score update with API key: 8 tests
 - Credit band classification: 8 parameterized tests
 - Covers unauthorized, forbidden, happy-path cases
 
 ✅ **Add tests for admin dispute**
+
 - Resolve/reject authorization paths: 12 tests
 - Resolve confirm/reverse actions: 6 tests
 - List and get disputes: 6 tests
 - Covers unauthorized, forbidden, happy-path cases
 
 ✅ **Cover at least unauthorized, forbidden, happy-path per controller**
+
 - Remittance: 20 tests ✓
 - Score: 30+ tests ✓
 - Admin Dispute: 28 tests ✓
@@ -284,14 +301,14 @@ All tests follow the established pattern in the codebase:
 
 ## Total Test Statistics
 
-| Controller | Tests | Unauthorized | Forbidden | Happy-Path |
-|-----------|-------|--------------|-----------|------------|
-| Remittance | 20 | ✅ | ✅ | ✅ |
-| Score | 30+ | ✅ | ✅ | ✅ |
-| Admin Dispute | 28 | ✅ | ✅ | ✅ |
-| Notification | 28+ | ✅ | ✅ | ✅ |
-| Auth | 28+ | ✅ | ✅ | ✅ |
-| **TOTAL** | **134+** | ✅ | ✅ | ✅ |
+| Controller    | Tests    | Unauthorized | Forbidden | Happy-Path |
+| ------------- | -------- | ------------ | --------- | ---------- |
+| Remittance    | 20       | ✅           | ✅        | ✅         |
+| Score         | 30+      | ✅           | ✅        | ✅         |
+| Admin Dispute | 28       | ✅           | ✅        | ✅         |
+| Notification  | 28+      | ✅           | ✅        | ✅         |
+| Auth          | 28+      | ✅           | ✅        | ✅         |
+| **TOTAL**     | **134+** | ✅           | ✅        | ✅         |
 
 ---
 

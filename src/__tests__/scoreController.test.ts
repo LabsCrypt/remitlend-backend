@@ -161,13 +161,11 @@ describe("GET /api/score/:userId", () => {
 // ---------------------------------------------------------------------------
 describe("POST /api/score/update", () => {
   it("should reject requests without API key", async () => {
-    const response = await request(app)
-      .post("/api/score/update")
-      .send({
-        userId: TEST_USER,
-        repaymentAmount: 100,
-        onTime: true,
-      });
+    const response = await request(app).post("/api/score/update").send({
+      userId: TEST_USER,
+      repaymentAmount: 100,
+      onTime: true,
+    });
 
     expect(response.status).toBe(401);
   });
@@ -267,9 +265,7 @@ describe("POST /api/score/update", () => {
   });
 
   it("should invalidate cache after score update", async () => {
-    const { cacheService } = await import(
-      "../services/cacheService.js"
-    );
+    const { cacheService } = await import("../services/cacheService.js");
     const mockCacheDelete = jest.spyOn(cacheService, "delete");
 
     mockedQuery
@@ -286,9 +282,7 @@ describe("POST /api/score/update", () => {
       });
 
     expect(response.status).toBe(200);
-    expect(mockCacheDelete).toHaveBeenCalledWith(
-      `score:userId:${TEST_USER}`,
-    );
+    expect(mockCacheDelete).toHaveBeenCalledWith(`score:userId:${TEST_USER}`);
 
     mockCacheDelete.mockRestore();
   });
@@ -323,7 +317,9 @@ describe("POST /api/score/update", () => {
 // ---------------------------------------------------------------------------
 describe("GET /api/score/:userId/breakdown", () => {
   it("should reject unauthenticated requests", async () => {
-    const response = await request(app).get(`/api/score/${TEST_USER}/breakdown`);
+    const response = await request(app).get(
+      `/api/score/${TEST_USER}/breakdown`,
+    );
     expect(response.status).toBe(401);
   });
 
@@ -353,10 +349,22 @@ describe("GET /api/score/:userId/breakdown", () => {
       })
       .mockResolvedValueOnce({
         rows: [
-          { event_type: "LoanRepaid", ledger_closed_at: "2025-01-01T00:00:00Z" },
-          { event_type: "LoanRepaid", ledger_closed_at: "2025-01-08T00:00:00Z" },
-          { event_type: "LoanRepaid", ledger_closed_at: "2025-01-15T00:00:00Z" },
-          { event_type: "LoanRepaid", ledger_closed_at: "2025-01-22T00:00:00Z" },
+          {
+            event_type: "LoanRepaid",
+            ledger_closed_at: "2025-01-01T00:00:00Z",
+          },
+          {
+            event_type: "LoanRepaid",
+            ledger_closed_at: "2025-01-08T00:00:00Z",
+          },
+          {
+            event_type: "LoanRepaid",
+            ledger_closed_at: "2025-01-15T00:00:00Z",
+          },
+          {
+            event_type: "LoanRepaid",
+            ledger_closed_at: "2025-01-22T00:00:00Z",
+          },
         ],
       });
 
@@ -418,9 +426,18 @@ describe("GET /api/score/:userId/breakdown", () => {
       })
       .mockResolvedValueOnce({
         rows: [
-          { event_type: "LoanRepaid", ledger_closed_at: "2025-01-01T00:00:00Z" },
-          { event_type: "LoanRepaid", ledger_closed_at: "2025-02-01T00:00:00Z" },
-          { event_type: "LoanRepaid", ledger_closed_at: "2025-03-01T00:00:00Z" },
+          {
+            event_type: "LoanRepaid",
+            ledger_closed_at: "2025-01-01T00:00:00Z",
+          },
+          {
+            event_type: "LoanRepaid",
+            ledger_closed_at: "2025-02-01T00:00:00Z",
+          },
+          {
+            event_type: "LoanRepaid",
+            ledger_closed_at: "2025-03-01T00:00:00Z",
+          },
         ],
       });
 

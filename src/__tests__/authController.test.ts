@@ -43,11 +43,9 @@ describe("POST /api/auth/challenge", () => {
   const testKeypair = Keypair.random();
 
   it("should generate challenge for valid public key", async () => {
-    const response = await request(app)
-      .post("/api/auth/challenge")
-      .send({
-        publicKey: testKeypair.publicKey(),
-      });
+    const response = await request(app).post("/api/auth/challenge").send({
+      publicKey: testKeypair.publicKey(),
+    });
 
     expect(response.status).toBe(200);
     expect(response.body.success).toBe(true);
@@ -59,11 +57,9 @@ describe("POST /api/auth/challenge", () => {
   });
 
   it("should include challenge message with nonce and timestamp", async () => {
-    const response = await request(app)
-      .post("/api/auth/challenge")
-      .send({
-        publicKey: testKeypair.publicKey(),
-      });
+    const response = await request(app).post("/api/auth/challenge").send({
+      publicKey: testKeypair.publicKey(),
+    });
 
     expect(response.status).toBe(200);
     const { message, nonce, timestamp } = response.body.data;
@@ -74,67 +70,53 @@ describe("POST /api/auth/challenge", () => {
   });
 
   it("should reject missing publicKey", async () => {
-    const response = await request(app)
-      .post("/api/auth/challenge")
-      .send({});
+    const response = await request(app).post("/api/auth/challenge").send({});
 
     expect(response.status).toBe(400);
     expect(response.body.success).toBe(false);
   });
 
   it("should reject invalid public key format", async () => {
-    const response = await request(app)
-      .post("/api/auth/challenge")
-      .send({
-        publicKey: "invalid_public_key",
-      });
+    const response = await request(app).post("/api/auth/challenge").send({
+      publicKey: "invalid_public_key",
+    });
 
     expect(response.status).toBe(400);
     expect(response.body.success).toBe(false);
   });
 
   it("should reject non-string publicKey", async () => {
-    const response = await request(app)
-      .post("/api/auth/challenge")
-      .send({
-        publicKey: 12345,
-      });
+    const response = await request(app).post("/api/auth/challenge").send({
+      publicKey: 12345,
+    });
 
     expect(response.status).toBe(400);
   });
 
   it("should reject empty publicKey", async () => {
-    const response = await request(app)
-      .post("/api/auth/challenge")
-      .send({
-        publicKey: "",
-      });
+    const response = await request(app).post("/api/auth/challenge").send({
+      publicKey: "",
+    });
 
     expect(response.status).toBe(400);
   });
 
   it("should return different nonces for multiple requests", async () => {
-    const response1 = await request(app)
-      .post("/api/auth/challenge")
-      .send({
-        publicKey: testKeypair.publicKey(),
-      });
+    const response1 = await request(app).post("/api/auth/challenge").send({
+      publicKey: testKeypair.publicKey(),
+    });
 
-    const response2 = await request(app)
-      .post("/api/auth/challenge")
-      .send({
-        publicKey: testKeypair.publicKey(),
-      });
+    const response2 = await request(app).post("/api/auth/challenge").send({
+      publicKey: testKeypair.publicKey(),
+    });
 
     expect(response1.body.data.nonce).not.toBe(response2.body.data.nonce);
   });
 
   it("should return expiration in milliseconds", async () => {
-    const response = await request(app)
-      .post("/api/auth/challenge")
-      .send({
-        publicKey: testKeypair.publicKey(),
-      });
+    const response = await request(app).post("/api/auth/challenge").send({
+      publicKey: testKeypair.publicKey(),
+    });
 
     expect(response.status).toBe(200);
     expect(response.body.data.expiresIn).toBe(5 * 60 * 1000); // 5 minutes
@@ -148,46 +130,38 @@ describe("POST /api/auth/login", () => {
   const testKeypair = Keypair.random();
 
   it("should reject missing publicKey", async () => {
-    const response = await request(app)
-      .post("/api/auth/login")
-      .send({
-        message: "test message",
-        signature: "test signature",
-      });
+    const response = await request(app).post("/api/auth/login").send({
+      message: "test message",
+      signature: "test signature",
+    });
 
     expect(response.status).toBe(400);
   });
 
   it("should reject missing message", async () => {
-    const response = await request(app)
-      .post("/api/auth/login")
-      .send({
-        publicKey: testKeypair.publicKey(),
-        signature: "test signature",
-      });
+    const response = await request(app).post("/api/auth/login").send({
+      publicKey: testKeypair.publicKey(),
+      signature: "test signature",
+    });
 
     expect(response.status).toBe(400);
   });
 
   it("should reject missing signature", async () => {
-    const response = await request(app)
-      .post("/api/auth/login")
-      .send({
-        publicKey: testKeypair.publicKey(),
-        message: "test message",
-      });
+    const response = await request(app).post("/api/auth/login").send({
+      publicKey: testKeypair.publicKey(),
+      message: "test message",
+    });
 
     expect(response.status).toBe(400);
   });
 
   it("should reject invalid challenge message format", async () => {
-    const response = await request(app)
-      .post("/api/auth/login")
-      .send({
-        publicKey: testKeypair.publicKey(),
-        message: "Invalid message without timestamp",
-        signature: "dGVzdA==",
-      });
+    const response = await request(app).post("/api/auth/login").send({
+      publicKey: testKeypair.publicKey(),
+      message: "Invalid message without timestamp",
+      signature: "dGVzdA==",
+    });
 
     expect(response.status).toBe(400);
   });
@@ -197,13 +171,11 @@ describe("POST /api/auth/login", () => {
     const expiredTimestamp = currentTime - 10 * 60 * 1000; // 10 minutes ago
     const message = `Sign this message\n\nTimestamp: ${expiredTimestamp}`;
 
-    const response = await request(app)
-      .post("/api/auth/login")
-      .send({
-        publicKey: testKeypair.publicKey(),
-        message,
-        signature: "dGVzdA==",
-      });
+    const response = await request(app).post("/api/auth/login").send({
+      publicKey: testKeypair.publicKey(),
+      message,
+      signature: "dGVzdA==",
+    });
 
     expect(response.status).toBe(401);
   });
@@ -213,13 +185,11 @@ describe("POST /api/auth/login", () => {
     const message = `Sign this message\n\nNonce: test\nTimestamp: ${currentTime}`;
     const invalidSignature = Buffer.alloc(64).toString("base64"); // Invalid signature
 
-    const response = await request(app)
-      .post("/api/auth/login")
-      .send({
-        publicKey: testKeypair.publicKey(),
-        message,
-        signature: invalidSignature,
-      });
+    const response = await request(app).post("/api/auth/login").send({
+      publicKey: testKeypair.publicKey(),
+      message,
+      signature: invalidSignature,
+    });
 
     expect(response.status).toBe(401);
   });
@@ -229,13 +199,11 @@ describe("POST /api/auth/login", () => {
     const message = `Sign this message\n\nNonce: test\nTimestamp: ${currentTime}`;
     const wrongLengthSignature = Buffer.alloc(32).toString("base64"); // 32 bytes instead of 64
 
-    const response = await request(app)
-      .post("/api/auth/login")
-      .send({
-        publicKey: testKeypair.publicKey(),
-        message,
-        signature: wrongLengthSignature,
-      });
+    const response = await request(app).post("/api/auth/login").send({
+      publicKey: testKeypair.publicKey(),
+      message,
+      signature: wrongLengthSignature,
+    });
 
     expect(response.status).toBe(401);
   });
@@ -247,13 +215,11 @@ describe("POST /api/auth/login", () => {
     const signature = testKeypair.sign(messageBytes);
     const signatureBase64 = signature.toString("base64");
 
-    const response = await request(app)
-      .post("/api/auth/login")
-      .send({
-        publicKey: testKeypair.publicKey(),
-        message,
-        signature: signatureBase64,
-      });
+    const response = await request(app).post("/api/auth/login").send({
+      publicKey: testKeypair.publicKey(),
+      message,
+      signature: signatureBase64,
+    });
 
     expect(response.status).toBe(200);
     expect(response.body.success).toBe(true);
@@ -268,13 +234,11 @@ describe("POST /api/auth/login", () => {
     const signature = testKeypair.sign(messageBytes);
     const signatureBase64 = signature.toString("base64");
 
-    const response = await request(app)
-      .post("/api/auth/login")
-      .send({
-        publicKey: testKeypair.publicKey(),
-        message,
-        signature: signatureBase64,
-      });
+    const response = await request(app).post("/api/auth/login").send({
+      publicKey: testKeypair.publicKey(),
+      message,
+      signature: signatureBase64,
+    });
 
     expect(response.status).toBe(200);
     expect(response.body.token).toBeDefined();
@@ -289,13 +253,11 @@ describe("POST /api/auth/login", () => {
     const signature = testKeypair.sign(messageBytes);
     const signatureBase64 = signature.toString("base64");
 
-    const response = await request(app)
-      .post("/api/auth/login")
-      .send({
-        publicKey: testKeypair.publicKey(),
-        message,
-        signature: signatureBase64,
-      });
+    const response = await request(app).post("/api/auth/login").send({
+      publicKey: testKeypair.publicKey(),
+      message,
+      signature: signatureBase64,
+    });
 
     expect(response.status).toBe(200);
     expect(response.headers["set-cookie"]).toBeDefined();
@@ -312,13 +274,11 @@ describe("POST /api/auth/login", () => {
     const wrongSignature = differentKeypair.sign(messageBytes);
     const wrongSignatureBase64 = wrongSignature.toString("base64");
 
-    const response = await request(app)
-      .post("/api/auth/login")
-      .send({
-        publicKey: testKeypair.publicKey(),
-        message,
-        signature: wrongSignatureBase64,
-      });
+    const response = await request(app).post("/api/auth/login").send({
+      publicKey: testKeypair.publicKey(),
+      message,
+      signature: wrongSignatureBase64,
+    });
 
     expect(response.status).toBe(401);
   });
@@ -332,13 +292,11 @@ describe("POST /api/auth/login", () => {
 
     const alteredMessage = `ALTERED ${message}`;
 
-    const response = await request(app)
-      .post("/api/auth/login")
-      .send({
-        publicKey: testKeypair.publicKey(),
-        message: alteredMessage,
-        signature: signatureBase64,
-      });
+    const response = await request(app).post("/api/auth/login").send({
+      publicKey: testKeypair.publicKey(),
+      message: alteredMessage,
+      signature: signatureBase64,
+    });
 
     expect(response.status).toBe(401);
   });
@@ -346,13 +304,11 @@ describe("POST /api/auth/login", () => {
   it("should reject invalid public key format", async () => {
     const message = `Sign this message\n\nTimestamp: ${Date.now()}`;
 
-    const response = await request(app)
-      .post("/api/auth/login")
-      .send({
-        publicKey: "not_a_valid_public_key",
-        message,
-        signature: "dGVzdA==",
-      });
+    const response = await request(app).post("/api/auth/login").send({
+      publicKey: "not_a_valid_public_key",
+      message,
+      signature: "dGVzdA==",
+    });
 
     expect(response.status).toBe(401);
   });
@@ -365,11 +321,9 @@ describe("Auth Controller - Authorization", () => {
   it("should allow challenge request without authentication", async () => {
     const testKeypair = Keypair.random();
 
-    const response = await request(app)
-      .post("/api/auth/challenge")
-      .send({
-        publicKey: testKeypair.publicKey(),
-      });
+    const response = await request(app).post("/api/auth/challenge").send({
+      publicKey: testKeypair.publicKey(),
+    });
 
     expect(response.status).toBe(200);
   });
@@ -382,13 +336,11 @@ describe("Auth Controller - Authorization", () => {
     const signature = testKeypair.sign(messageBytes);
     const signatureBase64 = signature.toString("base64");
 
-    const response = await request(app)
-      .post("/api/auth/login")
-      .send({
-        publicKey: testKeypair.publicKey(),
-        message,
-        signature: signatureBase64,
-      });
+    const response = await request(app).post("/api/auth/login").send({
+      publicKey: testKeypair.publicKey(),
+      message,
+      signature: signatureBase64,
+    });
 
     expect(response.status).toBe(200);
   });
@@ -416,13 +368,11 @@ describe("Auth Controller - Happy Path Scenarios", () => {
     const signature = testKeypair.sign(messageBytes);
     const signatureBase64 = signature.toString("base64");
 
-    const loginResponse = await request(app)
-      .post("/api/auth/login")
-      .send({
-        publicKey: testKeypair.publicKey(),
-        message,
-        signature: signatureBase64,
-      });
+    const loginResponse = await request(app).post("/api/auth/login").send({
+      publicKey: testKeypair.publicKey(),
+      message,
+      signature: signatureBase64,
+    });
 
     expect(loginResponse.status).toBe(200);
     expect(loginResponse.body.token).toBeDefined();
@@ -448,13 +398,11 @@ describe("Auth Controller - Happy Path Scenarios", () => {
     const signatureBase64 = signature.toString("base64");
 
     // Try to login with old message
-    const loginResponse = await request(app)
-      .post("/api/auth/login")
-      .send({
-        publicKey: testKeypair.publicKey(),
-        message: oldMessage,
-        signature: signatureBase64,
-      });
+    const loginResponse = await request(app).post("/api/auth/login").send({
+      publicKey: testKeypair.publicKey(),
+      message: oldMessage,
+      signature: signatureBase64,
+    });
 
     expect(loginResponse.status).toBe(401);
   });
@@ -481,26 +429,22 @@ describe("Auth Controller - Happy Path Scenarios", () => {
     const sig1 = keypair1
       .sign(Buffer.from(message1, "utf-8"))
       .toString("base64");
-    const login1 = await request(app)
-      .post("/api/auth/login")
-      .send({
-        publicKey: keypair1.publicKey(),
-        message: message1,
-        signature: sig1,
-      });
+    const login1 = await request(app).post("/api/auth/login").send({
+      publicKey: keypair1.publicKey(),
+      message: message1,
+      signature: sig1,
+    });
 
     // Second user login
     const message2 = challenge2.body.data.message;
     const sig2 = keypair2
       .sign(Buffer.from(message2, "utf-8"))
       .toString("base64");
-    const login2 = await request(app)
-      .post("/api/auth/login")
-      .send({
-        publicKey: keypair2.publicKey(),
-        message: message2,
-        signature: sig2,
-      });
+    const login2 = await request(app).post("/api/auth/login").send({
+      publicKey: keypair2.publicKey(),
+      message: message2,
+      signature: sig2,
+    });
 
     expect(login1.status).toBe(200);
     expect(login2.status).toBe(200);

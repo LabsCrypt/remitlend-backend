@@ -17,9 +17,9 @@ import {
   stopDefaultCheckerScheduler,
 } from "./services/defaultChecker.js";
 import {
-  startWebhookRetryScheduler,
-  stopWebhookRetryScheduler,
-} from "./services/webhookRetryScheduler.js";
+  startWebhookRetryProcessor,
+  stopWebhookRetryProcessor,
+} from "./services/webhookRetryProcessor.js";
 import { eventStreamService } from "./services/eventStreamService.js";
 import {
   startNotificationCleanupScheduler,
@@ -62,8 +62,8 @@ const server = app.listen(port, () => {
   // Start periodic on-chain default checks (if configured)
   startDefaultCheckerScheduler();
 
-  // Start webhook retry scheduler
-  startWebhookRetryScheduler();
+  // Start webhook retry processor
+  startWebhookRetryProcessor();
 
   // Start scheduled score reconciliation against on-chain state
   startScoreReconciliationScheduler();
@@ -91,7 +91,7 @@ const shutdown = async (signal: "SIGTERM" | "SIGINT") => {
   try {
     await stopIndexer();
     stopDefaultCheckerScheduler();
-    stopWebhookRetryScheduler();
+    stopWebhookRetryProcessor();
     stopScoreReconciliationScheduler();
     stopNotificationCleanupScheduler();
 

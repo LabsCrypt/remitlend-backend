@@ -13,6 +13,14 @@ jest.unstable_mockModule("../db/connection.js", () => ({
   closePool: jest.fn(),
 }));
 
+// Bypass SSRF DNS resolution so delivery tests don't depend on real DNS.
+jest.unstable_mockModule("../utils/ssrfGuard.js", () => ({
+  assertCallbackUrlAllowed: jest.fn(async () => undefined),
+  parseCallbackUrl: jest.fn(),
+  isBlockedIp: jest.fn(),
+  SsrfValidationError: class SsrfValidationError extends Error {},
+}));
+
 const { WebhookService, getRetryDelayMs } =
   await import("../services/webhookService.js");
 const { default: logger } = await import("../utils/logger.js");

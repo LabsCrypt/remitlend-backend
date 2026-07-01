@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { query } from "../db/connection.js";
 import logger from "../utils/logger.js";
+import { assertCallbackUrlAllowed } from "../utils/ssrfGuard.js";
 
 export const SUPPORTED_WEBHOOK_EVENT_TYPES = [
   "LoanRequested",
@@ -245,6 +246,10 @@ async function postWebhook(
   body: string,
   signature: string | undefined,
 ): Promise<Response> {
+  // Re-validate the resolved address at delivery time to defend against DNS
+  // rebinding (the host may resolve differently than at registration time).
+  await assertCallbackUrlAllowed(callbackUrl);
+
   const timeoutMs = getWebhookRequestTimeoutMs();
   const controller = new AbortController();
   const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);

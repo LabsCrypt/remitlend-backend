@@ -3,10 +3,18 @@ import { jest } from "@jest/globals";
 import { Keypair } from "@stellar/stellar-sdk";
 
 process.env.JWT_SECRET = "test-jwt-secret-min-32-chars-long!!";
+// These tests exercise auth flows repeatedly from a single IP, which would
+// otherwise trip the login rate limiter. Disable it for this suite only.
+process.env.DISABLE_RATE_LIMIT = "true";
 
 jest.unstable_mockModule("../db/connection.js", () => ({
   default: { query: jest.fn() },
   query: jest.fn(),
+  getClient: jest.fn<() => Promise<unknown>>(),
+  withTransaction: jest.fn<
+    (fn: (client: unknown) => Promise<unknown>) => Promise<unknown>
+  >((fn) => fn({ query: jest.fn(), release: jest.fn() })),
+  pool: { query: jest.fn() },
   closePool: jest.fn(),
 }));
 
@@ -21,7 +29,7 @@ jest.unstable_mockModule("../services/cacheService.js", () => ({
 
 jest.unstable_mockModule("../services/sorobanService.js", () => ({
   sorobanService: {
-    ping: jest.fn().mockResolvedValue("ok"),
+    ping: jest.fn<() => Promise<string>>().mockResolvedValue("ok"),
   },
 }));
 
@@ -34,6 +42,7 @@ beforeEach(() => {
 
 afterAll(() => {
   delete process.env.JWT_SECRET;
+  delete process.env.DISABLE_RATE_LIMIT;
 });
 
 // ---------------------------------------------------------------------------
@@ -66,7 +75,7 @@ describe("POST /api/auth/challenge", () => {
     expect(message).toContain("Nonce:");
     expect(message).toContain("Timestamp:");
     expect(message).toContain(nonce);
-    expect(message).toContain(timestamp);
+    expect(message).toContain(String(timestamp));
   });
 
   it("should reject missing publicKey", async () => {
@@ -223,7 +232,7 @@ describe("POST /api/auth/login", () => {
 
     expect(response.status).toBe(200);
     expect(response.body.success).toBe(true);
-    expect(response.body.token).toBeDefined();
+    expect(response.body.data.token).toBeDefined();
     expect(response.headers["set-cookie"]).toBeDefined();
   });
 
@@ -241,9 +250,9 @@ describe("POST /api/auth/login", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(response.body.token).toBeDefined();
+    expect(response.body.data.token).toBeDefined();
     // Token should be a valid JWT (three parts separated by dots)
-    expect(response.body.token.split(".").length).toBe(3);
+    expect(response.body.data.token.split(".").length).toBe(3);
   });
 
   it("should set secure cookie with JWT", async () => {
@@ -261,7 +270,9 @@ describe("POST /api/auth/login", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers["set-cookie"]).toBeDefined();
-    const setCookie = response.headers["set-cookie"][0];
+    const setCookie = (
+      response.headers["set-cookie"] as unknown as string[]
+    )[0];
     expect(setCookie).toContain("HttpOnly");
     expect(setCookie).toContain("Max-Age");
   });
@@ -375,7 +386,7 @@ describe("Auth Controller - Happy Path Scenarios", () => {
     });
 
     expect(loginResponse.status).toBe(200);
-    expect(loginResponse.body.token).toBeDefined();
+    expect(loginResponse.body.data.token).toBeDefined();
   });
 
   it("should reject login with stale message", async () => {
@@ -448,6 +459,6 @@ describe("Auth Controller - Happy Path Scenarios", () => {
 
     expect(login1.status).toBe(200);
     expect(login2.status).toBe(200);
-    expect(login1.body.token).not.toBe(login2.body.token);
+    expect(login1.body.data.token).not.toBe(login2.body.data.token);
   });
 });

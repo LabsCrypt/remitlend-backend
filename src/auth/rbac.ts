@@ -9,6 +9,8 @@ export const ROLE_SCOPES: Record<UserRole, string[]> = {
     "read:score",
     "read:notifications",
     "write:notifications",
+    "read:remittances",
+    "write:remittances",
   ],
   lender: ["read:loans", "read:pool"],
 };

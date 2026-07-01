@@ -18,6 +18,11 @@ const mockQuery: jest.MockedFunction<
 jest.unstable_mockModule("../db/connection.js", () => ({
   default: { query: mockQuery },
   query: mockQuery,
+  getClient: jest.fn<() => Promise<unknown>>(),
+  withTransaction: jest.fn<
+    (fn: (client: unknown) => Promise<unknown>) => Promise<unknown>
+  >((fn) => fn({ query: mockQuery, release: jest.fn() })),
+  pool: { query: mockQuery },
   closePool: jest.fn(),
 }));
 
@@ -40,21 +45,23 @@ const mockSubmitSignedTx =
 jest.unstable_mockModule("../services/sorobanService.js", () => ({
   sorobanService: {
     submitSignedTx: mockSubmitSignedTx,
-    ping: jest.fn().mockResolvedValue("ok"),
+    ping: jest.fn<() => Promise<string>>().mockResolvedValue("ok"),
   },
 }));
 
 jest.unstable_mockModule("../services/notificationService.js", () => ({
   notificationService: {
-    createNotification: jest.fn().mockResolvedValue(undefined),
+    createNotification: jest
+      .fn<() => Promise<void>>()
+      .mockResolvedValue(undefined),
   },
 }));
 
 const mockRemittanceService = {
-  createRemittance: jest.fn(),
-  getRemittances: jest.fn(),
-  getRemittance: jest.fn(),
-  updateRemittanceStatus: jest.fn(),
+  createRemittance: jest.fn<(...args: unknown[]) => Promise<unknown>>(),
+  getRemittances: jest.fn<(...args: unknown[]) => Promise<unknown>>(),
+  getRemittance: jest.fn<(...args: unknown[]) => Promise<unknown>>(),
+  updateRemittanceStatus: jest.fn<(...args: unknown[]) => Promise<unknown>>(),
 };
 
 jest.unstable_mockModule("../services/remittanceService.js", () => ({
@@ -239,7 +246,7 @@ describe("GET /api/remittances", () => {
     expect(mockRemittanceService.getRemittances).toHaveBeenCalledWith(
       TEST_SENDER,
       expect.anything(),
-      expect.anything(),
+      null,
       "completed",
     );
   });

@@ -36,8 +36,14 @@ export const markRead = asyncHandler(async (req: Request, res: Response) => {
   if (!userId) throw AppError.unauthorized("Authentication required");
 
   const { ids } = req.body as { ids?: unknown };
-  if (!Array.isArray(ids) || ids.some((id) => typeof id !== "number")) {
-    throw AppError.badRequest("Body must contain an array of numeric ids");
+  if (
+    !Array.isArray(ids) ||
+    ids.length === 0 ||
+    ids.some((id) => typeof id !== "number")
+  ) {
+    throw AppError.badRequest(
+      "Body must contain a non-empty array of numeric ids",
+    );
   }
 
   await notificationService.markRead(userId, ids as number[]);

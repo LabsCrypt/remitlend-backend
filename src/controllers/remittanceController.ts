@@ -19,7 +19,7 @@ export const createRemittance = asyncHandler(
       req.body;
 
     // Get sender address from JWT (added by auth middleware)
-    const senderAddress = (req as any).walletAddress;
+    const senderAddress = req.user?.publicKey;
 
     if (!senderAddress) {
       throw AppError.unauthorized("Wallet address not found in request");
@@ -57,7 +57,7 @@ export const createRemittance = asyncHandler(
  */
 export const getRemittances = asyncHandler(
   async (req: Request, res: Response) => {
-    const senderAddress = (req as any).walletAddress as string;
+    const senderAddress = req.user?.publicKey as string;
 
     if (!senderAddress) {
       throw AppError.unauthorized("Wallet address not found in request");
@@ -94,7 +94,7 @@ export const getRemittances = asyncHandler(
 export const getRemittance = asyncHandler(
   async (req: Request, res: Response) => {
     const { id } = req.params as { id: string };
-    const senderAddress = (req as any).walletAddress as string;
+    const senderAddress = req.user?.publicKey as string;
 
     if (!senderAddress) {
       throw AppError.unauthorized("Wallet address not found in request");
@@ -127,7 +127,7 @@ export const submitRemittanceTransaction = asyncHandler(
   async (req: Request, res: Response) => {
     const { id } = req.params as { id: string };
     const { signedXdr } = req.body as { signedXdr: string };
-    const senderAddress = (req as any).walletAddress as string;
+    const senderAddress = req.user?.publicKey as string;
 
     if (!senderAddress) {
       throw AppError.unauthorized("Wallet address not found in request");

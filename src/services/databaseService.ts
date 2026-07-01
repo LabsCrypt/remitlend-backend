@@ -1,5 +1,6 @@
-import { query, getClient } from "../db/connection.js";
+import { query } from "../db/connection.js";
 import type { PoolClient } from "pg";
+import { withTransaction } from "../db/transaction.js";
 
 export interface UserProfile {
   id: number;
@@ -406,21 +407,14 @@ export class IndexedEventsService {
 }
 
 export class DatabaseService {
+  /**
+   * Delegate to the canonical withTransaction from connection.ts,
+   * which provides transient-error retry with exponential backoff.
+   */
   static async withTransaction<T>(
     callback: (client: PoolClient) => Promise<T>,
   ): Promise<T> {
-    const client = await getClient();
-    try {
-      await client.query("BEGIN");
-      const result = await callback(client);
-      await client.query("COMMIT");
-      return result;
-    } catch (error) {
-      await client.query("ROLLBACK");
-      throw error;
-    } finally {
-      client.release();
-    }
+    return withTransaction(callback);
   }
 
   static async healthCheck(): Promise<boolean> {

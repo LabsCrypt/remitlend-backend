@@ -1,44 +1,74 @@
 import { getClient } from "./connection.js";
 import logger from "../utils/logger.js";
 
+// Re-use transient error codes from connection.ts
+import { TRANSIENT_ERROR_CODES } from "./connection.js";
+
 /**
  * Execute a database transaction with automatic rollback on error
- * @param operations - Array of database operations to execute within the transaction
+ * and retry on transient failures (08003, 08006, etc.).
+ *
+ * @param operations - Function receiving a pinned PoolClient
+ * @param maxRetries - Number of retry attempts on transient errors (default 3)
+ * @param baseDelayMs - Initial back-off delay in milliseconds
  * @returns Promise with the result of the operations
  */
 export async function withTransaction<T>(
   operations: (client: any) => Promise<T>,
+  maxRetries = 3,
+  baseDelayMs = 200,
 ): Promise<T> {
-  let client;
-  try {
-    client = await getClient();
-  } catch (error) {
-    logger.error("Failed to acquire database client for transaction", {
-      error,
-    });
-    throw new Error("Database connection failed");
-  }
+  let attempt = 0;
 
-  if (!client) {
-    throw new Error("Database client is undefined");
-  }
+  while (true) {
+    let client;
+    try {
+      client = await getClient();
+    } catch (error) {
+      logger.error("Failed to acquire database client for transaction", {
+        error,
+      });
+      throw new Error("Database connection failed");
+    }
 
-  try {
-    await client.query("BEGIN");
-    logger.debug("Database transaction started");
+    if (!client) {
+      throw new Error("Database client is undefined");
+    }
 
-    const result = await operations(client);
+    try {
+      await client.query("BEGIN");
+      logger.debug("Database transaction started");
 
-    await client.query("COMMIT");
-    logger.debug("Database transaction committed");
+      const result = await operations(client);
 
-    return result;
-  } catch (error) {
-    await client.query("ROLLBACK");
-    logger.error("Database transaction rolled back due to error:", error);
-    throw error;
-  } finally {
-    client.release();
+      await client.query("COMMIT");
+      logger.debug("Database transaction committed");
+
+      return result;
+    } catch (error: any) {
+      try {
+        await client.query("ROLLBACK");
+      } catch (rollbackError) {
+        logger.error("Failed to rollback transaction", { rollbackError });
+      }
+
+      const isTransient = TRANSIENT_ERROR_CODES.has(error?.code);
+      if (isTransient && attempt < maxRetries) {
+        const delay = baseDelayMs * 2 ** attempt;
+        attempt++;
+        logger.warn(
+          `Transient DB error in transaction (${error.code}). ` +
+            `Retrying in ${delay}ms (attempt ${attempt}/${maxRetries})`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        continue;
+      }
+
+      logger.error("Database transaction rolled back due to error:", error);
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 }
 

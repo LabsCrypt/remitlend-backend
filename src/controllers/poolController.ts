@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { query } from "../db/connection.js";
+import { withTransaction } from "../db/connection.js";
 import { withStellarAndDbTransaction } from "../db/transaction.js";
 import { AppError } from "../errors/AppError.js";
 import { ErrorCode } from "../errors/errorCodes.js";

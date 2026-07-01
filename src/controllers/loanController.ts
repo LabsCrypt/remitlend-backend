@@ -1,9 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
 import { query } from "../db/connection.js";
-import {
-  withTransaction,
-  withStellarAndDbTransaction,
-} from "../db/transaction.js";
+import { withTransaction } from "../db/connection.js";
+import { withStellarAndDbTransaction } from "../db/transaction.js";
 import { AppError } from "../errors/AppError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { getLoanConfig } from "../config/loanConfig.js";

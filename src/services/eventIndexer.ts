@@ -4,6 +4,7 @@ import {
   query,
   withTransaction,
   getClient,
+  pool,
 } from "../db/connection.js";
 import logger from "../utils/logger.js";
 import {
@@ -25,7 +26,7 @@ import { sorobanService } from "./sorobanService.js";
 import { updateUserScoresBulk } from "./scoresService.js";
 import { AppError } from "../errors/AppError.js";
 
-const EVENT_TYPE_ALIASES: Record<string, WebhookEventType> = {
+const EVENT_TYPE_ALIASES: Record<string, string> = {
   Mint: "NFTMinted",
   AdmRemint: "NFTMinted",
   ScoreUpd: "ScoreUpdated",
@@ -84,10 +85,6 @@ interface ProcessChunkResult {
 }
 
 export class EventIndexer {
-  // Stable advisory lock key reserved for the event-indexer poll cycle.
-  // Chosen to be unique within this database; change only with a migration.
-  private static readonly ADVISORY_LOCK_KEY = 738_154_291;
-
   private readonly rpc: SorobanRpc.Server;
   private readonly contractIds: string[];
   private readonly pollIntervalMs: number;
@@ -244,60 +241,27 @@ export class EventIndexer {
   private async pollOnce(): Promise<void> {
     if (!this.running) return;
 
-    // Acquire a session-level Postgres advisory lock so that only one instance
-    // advances the cursor at a time. pg_try_advisory_lock returns false
-    // immediately when another session already holds the lock, so this instance
-    // skips the cycle rather than blocking.
-    const lockClient = await getClient();
-    try {
-      const lockResult = await lockClient.query<{ acquired: boolean }>(
-        "SELECT pg_try_advisory_lock($1) AS acquired",
-        [EventIndexer.ADVISORY_LOCK_KEY],
-      );
+    const lastIndexedLedger = await this.getLastIndexedLedger();
+    const latestLedger = await this.getLatestLedgerSequence();
 
-      if (!lockResult.rows[0]?.acquired) {
-        logger.debug(
-          "Indexer poll skipped — another instance holds the advisory lock",
-        );
-        return;
-      }
-
-      logger.debug("Indexer advisory lock acquired — starting poll cycle");
-
-      try {
-        const lastIndexedLedger = await this.getLastIndexedLedger();
-        const latestLedger = await this.getLatestLedgerSequence();
-
-        if (latestLedger <= lastIndexedLedger) {
-          return;
-        }
-
-        const fromLedger = lastIndexedLedger + 1;
-        const toLedger = Math.min(
-          fromLedger + this.batchSize - 1,
-          latestLedger,
-        );
-
-        const result = await this.processChunk(fromLedger, toLedger);
-        await this.updateLastIndexedLedger(result.lastProcessedLedger);
-      } finally {
-        // Always release the advisory lock on the same connection that acquired it.
-        await lockClient.query("SELECT pg_advisory_unlock($1)", [
-          EventIndexer.ADVISORY_LOCK_KEY,
-        ]);
-      }
-    } finally {
-      lockClient.release();
+    if (latestLedger <= lastIndexedLedger) {
+      return;
     }
+
+    const fromLedger = lastIndexedLedger + 1;
+    const toLedger = Math.min(fromLedger + this.batchSize - 1, latestLedger);
+
+    const result = await this.processChunk(fromLedger, toLedger);
+    await this.updateLastIndexedLedger(result.lastProcessedLedger);
   }
 
   private async getLatestLedgerSequence(): Promise<number> {
     try {
       const latest = (await (
         this.rpc as unknown as {
-          getLatestLedger: () => Promise<Record<string, unknown>>;
+          getLatestLedger: () => Promise<Record<string, any>>;
         }
-      ).getLatestLedger()) as Record<string, unknown>;
+      ).getLatestLedger()) as Record<string, any>;
 
       const candidate =
         latest.sequence ?? latest.sequenceNumber ?? latest.seq ?? latest.id;

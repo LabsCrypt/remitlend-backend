@@ -19,6 +19,11 @@ const mockQuery: jest.MockedFunction<
 jest.unstable_mockModule("../db/connection.js", () => ({
   default: { query: mockQuery },
   query: mockQuery,
+  getClient: jest.fn<() => Promise<unknown>>(),
+  withTransaction: jest.fn<
+    (fn: (client: unknown) => Promise<unknown>) => Promise<unknown>
+  >((fn) => fn({ query: mockQuery, release: jest.fn() })),
+  pool: { query: mockQuery },
   closePool: jest.fn(),
 }));
 
@@ -33,13 +38,15 @@ jest.unstable_mockModule("../services/cacheService.js", () => ({
 
 jest.unstable_mockModule("../services/sorobanService.js", () => ({
   sorobanService: {
-    ping: jest.fn().mockResolvedValue("ok"),
+    ping: jest.fn<() => Promise<string>>().mockResolvedValue("ok"),
   },
 }));
 
 jest.unstable_mockModule("../services/notificationService.js", () => ({
   notificationService: {
-    createNotification: jest.fn().mockResolvedValue(undefined),
+    createNotification: jest
+      .fn<() => Promise<void>>()
+      .mockResolvedValue(undefined),
   },
 }));
 
@@ -48,7 +55,7 @@ const { default: app } = await import("../app.js");
 
 const mockedQuery = mockQuery;
 
-const bearer = (publicKey: string) => ({
+const bearer = (publicKey: string, _role?: string) => ({
   Authorization: `Bearer ${generateJwtToken(publicKey)}`,
 });
 
@@ -339,7 +346,7 @@ describe("POST /api/admin/disputes/:disputeId/resolve", () => {
       status: "resolved", // Already resolved
     };
 
-    mockedQuery.mockResolvedValueOnce({
+    mockedQuery.mockResolvedValue({
       rows: [], // No open dispute found
       rowCount: 0,
     });
@@ -449,7 +456,7 @@ describe("POST /api/admin/disputes/:disputeId/reject", () => {
   });
 
   it("should reject resolution on already-resolved dispute", async () => {
-    mockedQuery.mockResolvedValueOnce({
+    mockedQuery.mockResolvedValue({
       rows: [], // No open dispute found
       rowCount: 0,
     });

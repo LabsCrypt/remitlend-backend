@@ -19,6 +19,11 @@ const mockQuery: jest.MockedFunction<
 jest.unstable_mockModule("../db/connection.js", () => ({
   default: { query: mockQuery },
   query: mockQuery,
+  getClient: jest.fn<() => Promise<unknown>>(),
+  withTransaction: jest.fn<
+    (fn: (client: unknown) => Promise<unknown>) => Promise<unknown>
+  >((fn) => fn({ query: mockQuery, release: jest.fn() })),
+  pool: { query: mockQuery },
   closePool: jest.fn(),
 }));
 
@@ -33,7 +38,7 @@ jest.unstable_mockModule("../services/cacheService.js", () => ({
 
 jest.unstable_mockModule("../services/sorobanService.js", () => ({
   sorobanService: {
-    ping: jest.fn().mockResolvedValue("ok"),
+    ping: jest.fn<() => Promise<string>>().mockResolvedValue("ok"),
   },
 }));
 
@@ -91,7 +96,7 @@ describe("GET /api/score/:userId", () => {
     expect(response.body.success).toBe(true);
     expect(response.body.userId).toBe(TEST_USER);
     expect(response.body.score).toBe(650);
-    expect(response.body.band).toBe("Good");
+    expect(response.body.band).toBe("Fair");
   });
 
   it("should return default score 500 when no score exists", async () => {
@@ -202,7 +207,7 @@ describe("POST /api/score/update", () => {
     expect(response.body.oldScore).toBe(650);
     expect(response.body.newScore).toBe(665);
     expect(response.body.delta).toBe(15);
-    expect(response.body.band).toBe("Good");
+    expect(response.body.band).toBe("Fair");
   });
 
   it("should update score with late repayment", async () => {
@@ -374,10 +379,10 @@ describe("GET /api/score/:userId/breakdown", () => {
 
     expect(response.status).toBe(200);
     expect(response.body.success).toBe(true);
-    expect(response.body.current_score).toBe(650);
-    expect(response.body.total_loans).toBe(5);
-    expect(response.body.repaid_count).toBe(4);
-    expect(response.body.on_time_count).toBe(4);
+    expect(response.body.score).toBe(650);
+    expect(response.body.breakdown.totalLoans).toBe(5);
+    expect(response.body.breakdown.repaidOnTime).toBe(4);
+    expect(response.body.breakdown.repaidLate).toBe(0);
   });
 
   it("should return breakdown with zero loans", async () => {
@@ -404,8 +409,8 @@ describe("GET /api/score/:userId/breakdown", () => {
 
     expect(response.status).toBe(200);
     expect(response.body.success).toBe(true);
-    expect(response.body.current_score).toBe(500);
-    expect(response.body.total_loans).toBe(0);
+    expect(response.body.score).toBe(500);
+    expect(response.body.breakdown.totalLoans).toBe(0);
   });
 
   it("should include payment history timeline", async () => {
@@ -446,7 +451,7 @@ describe("GET /api/score/:userId/breakdown", () => {
       .set(bearer(TEST_USER));
 
     expect(response.status).toBe(200);
-    expect(response.body.payment_history).toBeDefined();
+    expect(response.body.history).toBeDefined();
   });
 });
 

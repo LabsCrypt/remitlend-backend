@@ -13,6 +13,11 @@ process.env.JWT_SECRET = "test-jwt-secret-min-32-chars-long!!";
 jest.unstable_mockModule("../db/connection.js", () => ({
   default: { query: jest.fn() },
   query: jest.fn(),
+  getClient: jest.fn<() => Promise<unknown>>(),
+  withTransaction: jest.fn<
+    (fn: (client: unknown) => Promise<unknown>) => Promise<unknown>
+  >((fn) => fn({ query: jest.fn(), release: jest.fn() })),
+  pool: { query: jest.fn() },
   closePool: jest.fn(),
 }));
 
@@ -27,17 +32,17 @@ jest.unstable_mockModule("../services/cacheService.js", () => ({
 
 jest.unstable_mockModule("../services/sorobanService.js", () => ({
   sorobanService: {
-    ping: jest.fn().mockResolvedValue("ok"),
+    ping: jest.fn<() => Promise<string>>().mockResolvedValue("ok"),
   },
 }));
 
 const mockNotificationService = {
-  getNotificationsForUser: jest.fn(),
-  getUnreadCount: jest.fn(),
-  markRead: jest.fn(),
-  markAllRead: jest.fn(),
-  subscribe: jest.fn(),
-  createNotification: jest.fn(),
+  getNotificationsForUser: jest.fn<(...args: unknown[]) => Promise<unknown>>(),
+  getUnreadCount: jest.fn<(...args: unknown[]) => Promise<unknown>>(),
+  markRead: jest.fn<(...args: unknown[]) => Promise<unknown>>(),
+  markAllRead: jest.fn<(...args: unknown[]) => Promise<unknown>>(),
+  subscribe: jest.fn<(...args: unknown[]) => unknown>(),
+  createNotification: jest.fn<(...args: unknown[]) => Promise<unknown>>(),
 };
 
 jest.unstable_mockModule("../services/notificationService.js", () => ({
@@ -51,6 +56,41 @@ const { default: app } = await import("../app.js");
 const bearer = (publicKey: string) => ({
   Authorization: `Bearer ${generateJwtToken(publicKey)}`,
 });
+
+/**
+ * SSE endpoints keep the connection open indefinitely, so a normal awaited
+ * supertest request never resolves. This helper opens the stream, resolves once
+ * the response headers have arrived (by which point the controller has already
+ * run its synchronous on-connect logic: getNotificationsForUser + subscribe),
+ * then aborts the underlying request so the test can complete.
+ */
+const sseRequest = (
+  publicKey?: string,
+): Promise<{ status: number; headers: Record<string, string> }> =>
+  new Promise((resolve, reject) => {
+    const req = request(app).get("/api/notifications/stream");
+    if (publicKey) {
+      req.set(bearer(publicKey));
+    }
+    req
+      .buffer(false)
+      .parse((res, callback) => {
+        const httpRes = res as unknown as {
+          statusCode: number;
+          headers: Record<string, string>;
+        };
+        resolve({ status: httpRes.statusCode, headers: httpRes.headers });
+        // Abort the streaming connection; we already have what we need.
+        (res as unknown as { destroy: () => void }).destroy();
+        callback(null, {});
+      })
+      .end((err) => {
+        // A forcibly-destroyed socket surfaces as an aborted error; ignore it.
+        if (err && !/aborted|socket hang up|ECONNRESET/i.test(err.message)) {
+          reject(err);
+        }
+      });
+  });
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -355,9 +395,7 @@ describe("GET /api/notifications/stream", () => {
     mockNotificationService.getNotificationsForUser.mockResolvedValueOnce([]);
     mockNotificationService.subscribe.mockReturnValueOnce(mockUnsubscribe);
 
-    const response = await request(app)
-      .get("/api/notifications/stream")
-      .set(bearer(TEST_USER));
+    const response = await sseRequest(TEST_USER);
 
     // SSE streams are typically handled with 200 status and event-stream content-type
     expect(response.status).toBe(200);
@@ -381,9 +419,7 @@ describe("GET /api/notifications/stream", () => {
     ]);
     mockNotificationService.subscribe.mockReturnValueOnce(mockUnsubscribe);
 
-    const response = await request(app)
-      .get("/api/notifications/stream")
-      .set(bearer(TEST_USER));
+    const response = await sseRequest(TEST_USER);
 
     expect(response.status).toBe(200);
     expect(
@@ -396,9 +432,7 @@ describe("GET /api/notifications/stream", () => {
     mockNotificationService.getNotificationsForUser.mockResolvedValueOnce([]);
     mockNotificationService.subscribe.mockReturnValueOnce(mockUnsubscribe);
 
-    const response = await request(app)
-      .get("/api/notifications/stream")
-      .set(bearer(TEST_USER));
+    const response = await sseRequest(TEST_USER);
 
     expect(response.status).toBe(200);
     expect(response.headers["content-type"]).toContain("text/event-stream");
@@ -411,7 +445,7 @@ describe("GET /api/notifications/stream", () => {
     mockNotificationService.getNotificationsForUser.mockResolvedValueOnce([]);
     mockNotificationService.subscribe.mockReturnValueOnce(mockUnsubscribe);
 
-    await request(app).get("/api/notifications/stream").set(bearer(TEST_USER));
+    await sseRequest(TEST_USER);
 
     expect(mockNotificationService.subscribe).toHaveBeenCalledWith(
       TEST_USER,
@@ -424,9 +458,7 @@ describe("GET /api/notifications/stream", () => {
     mockNotificationService.getNotificationsForUser.mockResolvedValueOnce([]);
     mockNotificationService.subscribe.mockReturnValueOnce(mockUnsubscribe);
 
-    const response = await request(app)
-      .get("/api/notifications/stream")
-      .set(bearer(TEST_USER));
+    const response = await sseRequest(TEST_USER);
 
     expect(response.status).toBe(200);
   });
@@ -481,7 +513,7 @@ describe("Notification Controller - Authorization", () => {
     mockNotificationService.getNotificationsForUser.mockResolvedValueOnce([]);
     mockNotificationService.subscribe.mockReturnValueOnce(mockUnsubscribe);
 
-    await request(app).get("/api/notifications/stream").set(bearer(TEST_USER));
+    await sseRequest(TEST_USER);
 
     // Should subscribe with TEST_USER
     expect(mockNotificationService.subscribe).toHaveBeenCalledWith(
@@ -548,9 +580,7 @@ describe("Notification Controller - Happy Path Scenarios", () => {
     );
     mockNotificationService.subscribe.mockReturnValueOnce(mockUnsubscribe);
 
-    const response = await request(app)
-      .get("/api/notifications/stream")
-      .set(bearer(TEST_USER));
+    const response = await sseRequest(TEST_USER);
 
     expect(response.status).toBe(200);
     expect(mockNotificationService.getNotificationsForUser).toHaveBeenCalled();

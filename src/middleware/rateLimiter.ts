@@ -21,6 +21,7 @@ export const challengeRateLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  skip: () => process.env.DISABLE_RATE_LIMIT === "true",
   handler: (req, res, _next, options) => {
     res.setHeader("Retry-After", Math.ceil(options.windowMs / 1000));
     res.status(429).json(options.message);
@@ -38,6 +39,7 @@ export const loginRateLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  skip: () => process.env.DISABLE_RATE_LIMIT === "true",
   handler: (req, res, _next, options) => {
     res.setHeader("Retry-After", Math.ceil(options.windowMs / 1000));
     res.status(429).json(options.message);
@@ -54,6 +56,7 @@ export const ipLoginRateLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  skip: () => process.env.DISABLE_RATE_LIMIT === "true",
   handler: (req, res, _next, options) => {
     res.setHeader("Retry-After", Math.ceil(options.windowMs / 1000));
     res.status(429).json(options.message);
@@ -67,6 +70,7 @@ export const verifyRateLimiter = rateLimit({
   message: { success: false, message: "Too many verification attempts" },
   standardHeaders: true,
   legacyHeaders: false,
+  skip: () => process.env.DISABLE_RATE_LIMIT === "true",
   handler: (req, res, _next, options) => {
     res.setHeader("Retry-After", Math.ceil(options.windowMs / 1000));
     res.status(429).json(options.message);

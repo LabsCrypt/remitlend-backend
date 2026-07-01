@@ -524,7 +524,7 @@ describe("Admin Dispute Controller - Authorization", () => {
   it("should enforce admin role on reject", async () => {
     const response = await request(app)
       .post("/api/admin/disputes/1/reject")
-      .set(bearer(TEST_USER));
+      .set(bearer(TEST_USER))
       .send({});
 
     expect(response.status).toBe(403);

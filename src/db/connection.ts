@@ -1,62 +1,32 @@
-/**
- *
- * Database connection pool and query helper.
- */
-
-import pg from "pg";
+import pg, { type PoolClient } from "pg";
 import logger from "../utils/logger.js";
 
-export type { PoolClient } from "pg";
+export type { PoolClient };
+export { withTransaction } from "./transaction.js";
 
 const { Pool } = pg;
 
+// Parse pool configuration from environment
+const maxPoolSize = process.env.DB_POOL_MAX
+  ? parseInt(process.env.DB_POOL_MAX, 10)
+  : 10;
+const minPoolSize = process.env.DB_POOL_MIN
+  ? parseInt(process.env.DB_POOL_MIN, 10)
+  : 2;
+const idleTimeoutMillis = process.env.DB_IDLE_TIMEOUT_MS
+  ? parseInt(process.env.DB_IDLE_TIMEOUT_MS, 10)
+  : 30000;
+
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  max: 20,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
+  min: minPoolSize,
+  max: maxPoolSize,
+  idleTimeoutMillis,
 });
-
-pool.on("error", (err) => {
-  logger.error("Unexpected database pool error", err);
-});
-
-export async function query(
-  sql: string,
-  params?: unknown[],
-): Promise<pg.QueryResult> {
-  const client = await pool.connect();
-  try {
-    const result = await client.query(sql, params);
-    return result;
-  } finally {
-    client.release();
-  }
-}
-
-export async function getClient(): Promise<pg.PoolClient> {
-  return pool.connect();
-}
-
-export async function withTransaction<T>(
-  callback: (client: pg.PoolClient) => Promise<T>
-): Promise<T> {
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-    const result = await callback(client);
-    await client.query("COMMIT");
-    return result;
-  } catch (error) {
-    await client.query("ROLLBACK");
-    throw error;
-  } finally {
-    client.release();
-  }
-}
 
 let isShuttingDown = false;
 
+// Periodic pool health metrics logging
 const metricsInterval = setInterval(() => {
   logger.info("DB Pool Metrics", {
     total: pool.totalCount,
@@ -65,24 +35,109 @@ const metricsInterval = setInterval(() => {
     waiting: pool.waitingCount,
   });
 }, 60000);
+
+// Unref the interval so it doesn't keep the process alive
 metricsInterval.unref();
+
+// Log idle client errors
+pool.on("error", (err: Error) => {
+  logger.error("Unexpected error on idle client", err);
+});
+
+// Helper for transient failures
+export const TRANSIENT_ERROR_CODES = new Set([
+  "ECONNREFUSED",
+  "08000",
+  "08003",
+  "08006",
+  "57P01", // admin_shutdown
+  "57P02", // crash_shutdown
+  "57P03", // cannot_connect_now
+  "40001", // serialization_failure
+  "40P01", // deadlock_detected
+]);
+const MAX_RETRIES = 3;
+
+const withRetry = async <T>(
+  operation: () => Promise<T>,
+  retries = MAX_RETRIES,
+  delay = 500,
+): Promise<T> => {
+  try {
+    return await operation();
+  } catch (error: any) {
+    if (retries > 0 && TRANSIENT_ERROR_CODES.has(error.code)) {
+      logger.warn(
+        `Transient db error (${error.code}). Retrying in ${delay}ms... (${retries} retries left)`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      return withRetry(operation, retries - 1, delay * 2);
+    }
+    throw error;
+  }
+};
+
+const checkExhaustion = () => {
+  if (pool.totalCount >= maxPoolSize && pool.idleCount === 0) {
+    logger.warn(
+      "DB Pool Exhaustion Warning: All connections are currently in use.",
+      {
+        waiting: pool.waitingCount,
+        active: pool.totalCount,
+      },
+    );
+  }
+};
+
+export const query = async (text: string, params?: unknown[]) => {
+  if (isShuttingDown) {
+    throw new Error("Database pool is shutting down");
+  }
+  checkExhaustion();
+  return withRetry(async () => {
+    const start = Date.now();
+    const result = await pool.query(text, params);
+    const duration = Date.now() - start;
+    logger.debug("Executed query", {
+      text: text.substring(0, 50),
+      duration,
+      rows: result.rowCount,
+    });
+    return result;
+  });
+};
+
+export const getClient = async () => {
+  if (isShuttingDown) {
+    throw new Error("Database pool is shutting down");
+  }
+  checkExhaustion();
+  return withRetry(async () => {
+    const client = await pool.connect();
+    return client;
+  });
+};
 
 const waitForPoolToDrain = async (timeoutMs: number): Promise<void> => {
   const startedAt = Date.now();
+
   while (pool.totalCount > 0 && pool.totalCount !== pool.idleCount) {
     if (Date.now() - startedAt >= timeoutMs) {
       throw new Error(
         `Timed out waiting for pool to drain active clients after ${timeoutMs}ms`,
       );
     }
+
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
 };
 
-export const closePool = async (options?: { timeoutMs?: number }): Promise<void> => {
-  const timeoutMs = options?.timeoutMs ?? 10000;
+export const closePool = async (options?: { timeoutMs?: number }) => {
+  const timeoutMs = options?.timeoutMs ?? 10_000;
   isShuttingDown = true;
   clearInterval(metricsInterval);
   await waitForPoolToDrain(timeoutMs);
   await pool.end();
 };
+
+export default pool;

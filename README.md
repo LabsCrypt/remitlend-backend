@@ -14,7 +14,7 @@ The backend serves as a bridge between the frontend application and the Stellar 
 
 ## Tech Stack
 
-- **Runtime**: Node.js 18+
+- **Runtime**: Node.js 22+ (matches Dockerfile `node:22-alpine`)
 - **Framework**: Express.js 5
 - **Language**: TypeScript
 - **Validation**: Zod
@@ -26,8 +26,10 @@ The backend serves as a bridge between the frontend application and the Stellar 
 
 ### Prerequisites
 
-- Node.js 18 or higher
+- Node.js 22 or higher
 - npm or yarn
+- PostgreSQL 14+
+- Redis 7+
 
 ### Installation
 
@@ -120,32 +122,137 @@ With Docker Compose from the repo root, the `backend` service runs `migrate:up` 
 
 ### Environment Variables
 
-Create a `.env` file in the backend directory (see `.env.example` for all available variables):
+Create a `.env` file in the backend directory by copying the template (`cp .env.example .env`).
 
-```env
-# Server Configuration
-PORT=3001
+#### Startup Mandatory Variables
 
-# CORS Configuration
-FRONTEND_URL=http://localhost:3000
+These variables are required at server boot. Missing or invalid values will trigger immediate exit:
 
-# Stellar Configuration
-STELLAR_NETWORK=testnet
-STELLAR_RPC_URL=https://soroban-testnet.stellar.org
-STELLAR_NETWORK_PASSPHRASE=Test SDF Network ; September 2015
-LOAN_MANAGER_CONTRACT_ID=
-LOAN_MANAGER_ADMIN_SECRET=S...   # valid Stellar Ed25519 secret seed
+| Variable | Category | Description | Example / Requirement |
+|---|---|---|---|
+| `DATABASE_URL` | Database | PostgreSQL connection URL | `postgres://postgres:postgres@localhost:5432/remitlend` |
+| `REDIS_URL` | Cache / Locks | Redis connection URL for distributed cron locks | `redis://localhost:6379` |
+| `JWT_SECRET` | Auth | Secret for signing & verifying JWTs | Min 32 characters |
+| `INTERNAL_API_KEY` | Auth | Key for internal admin/service endpoints | Min 32 characters |
+| `STELLAR_NETWORK` | Blockchain | Target Stellar network | `testnet` or `mainnet` |
+| `STELLAR_RPC_URL` | Blockchain | Soroban RPC endpoint | `https://soroban-testnet.stellar.org` |
+| `STELLAR_NETWORK_PASSPHRASE` | Blockchain | Passphrase matching the network | `Test SDF Network ; September 2015` |
+| `LOAN_MANAGER_CONTRACT_ID` | Contracts | Deployed LoanManager contract address | 56-char Stellar contract ID |
+| `REMITTANCE_NFT_CONTRACT_ID` | Contracts | Deployed RemittanceNFT contract address | 56-char Stellar contract ID |
+| `LENDING_POOL_CONTRACT_ID` | Contracts | Deployed LendingPool contract address | 56-char Stellar contract ID |
+| `MULTISIG_GOVERNANCE_CONTRACT_ID` | Contracts | Deployed Multisig contract address | 56-char Stellar contract ID |
+| `LOAN_MANAGER_ADMIN_SECRET` | Blockchain | Stellar secret seed for admin transactions | Valid 56-char Ed25519 seed (`S...`) |
+| `LOAN_MIN_SCORE` | Loan Config | Minimum credit score to qualify | `500` |
+| `LOAN_MAX_AMOUNT` | Loan Config | Maximum loan principal | `50000` |
+| `LOAN_INTEREST_RATE_PERCENT`| Loan Config | Annual interest percentage | `12` |
+| `CREDIT_SCORE_THRESHOLD` | Loan Config | Threshold for automated approval | `600` |
+| `SCORE_DELTA_REPAY` | Score Deltas | Points awarded upon full repayment | `15` |
+| `SCORE_DELTA_DEFAULT` | Score Deltas | Points deducted on default | `50` |
+| `SCORE_DELTA_LATE` | Score Deltas | Points deducted on late payment | `5` |
+
+#### Optional & Tunable Variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `PORT` | `3001` | HTTP server listening port |
+| `CORS_ALLOWED_ORIGINS` | `http://localhost:3000,http://localhost:3001` | Comma-separated list of allowed CORS origins |
+| `FRONTEND_URL` | `http://localhost:3000` | Frontend base URL for redirects and notifications |
+| `INDEXER_POLL_INTERVAL_MS` | `30000` (30s) | Soroban event poller interval |
+| `INDEXER_BATCH_SIZE` | `100` | Max events per indexing poll cycle |
+| `DEFAULT_CHECK_INTERVAL_MS`| `1800000` (30m) | Interval between on-chain default check runs |
+| `DEFAULT_CHECK_MAX_LOANS_PER_RUN` | `500` | Safety limit for default check candidate loans |
+| `SCORE_RECONCILIATION_INTERVAL_MS` | `3600000` (1h) | Frequency of on-chain score state reconciliations |
+| `WEBHOOK_REQUEST_TIMEOUT_MS` | `30000` (30s) | Outbound webhook HTTP timeout |
+| `NOTIFICATION_RETENTION_DAYS` | `90` | Days before pruning unread notifications |
+| `SENTRY_DSN` | *(empty)* | Optional Sentry error reporting DSN |
+
+#### Secret Format Requirements
+
+The server validates secret formats at startup and exits immediately if invalid:
+
+| Variable | Requirement |
+|---|---|
+| `JWT_SECRET` | At least 32 characters |
+| `INTERNAL_API_KEY` | At least 32 characters |
+| `LOAN_MANAGER_ADMIN_SECRET` | Valid Stellar Ed25519 secret seed (`S...`, exactly 56 chars) |
+
+---
+
+## Background Schedulers & Cron Jobs
+
+RemitLend runs background worker services coordinated via Redis distributed locks to prevent duplicate execution across multiple server instances:
+
+1. **Soroban Event Indexer (`startIndexer`)**:
+   - Polls Soroban RPC on an interval (`INDEXER_POLL_INTERVAL_MS`, default 30s) for `LoanRequested`, `LoanApproved`, `LoanRepaid`, and `LoanDefaulted` contract events.
+   - Updates `loan_events` and modifies user credit scores deterministically using `SCORE_DELTA_*` configs.
+
+2. **Default Checker (`startDefaultCheckerScheduler`)**:
+   - Scans active loans and invokes the on-chain `check_defaults` method via `LOAN_MANAGER_ADMIN_SECRET` on a 30-minute interval (`DEFAULT_CHECK_INTERVAL_MS`).
+   - Batches loans up to `DEFAULT_CHECK_BATCH_SIZE` to fit within Soroban compute and footprint limits.
+
+3. **Webhook Retry Worker (`startWebhookRetryScheduler`)**:
+   - Automatically retries failed outbound webhook notifications using exponential backoff with jitter up to max retry attempts.
+
+4. **Score Reconciliation (`startScoreReconciliationScheduler`)**:
+   - Runs every hour (`SCORE_RECONCILIATION_INTERVAL_MS`) to audit local database credit scores against on-chain Soroban storage, flagging discrepancies.
+
+5. **Notification Cleanup Scheduler (`startNotificationCleanupScheduler`)**:
+   - Runs daily at midnight to prune notifications older than `NOTIFICATION_RETENTION_DAYS`.
+
+6. **Loan Due Check Cron (`startLoanDueCheckCron`)**:
+   - Hourly cron (`0 * * * *`) that checks for loans nearing maturity or past due, dispatching reminders via email/SMS. Uses Redis lock `loan_due_check_cron:running`.
+
+7. **Score Decay Cron (`startScoreDecayCron`)**:
+   - Daily cron at 02:00 UTC (`0 2 * * *`) applying inactivity decay to dormant borrower scores. Uses Redis distributed locking.
+
+---
+
+## Webhook Security & HMAC Verification
+
+Outbound webhooks sent to registered subscribers include an HMAC-SHA256 signature header (`x-remitlend-signature`) to guarantee authenticity and payload integrity.
+
+### Signature Generation
+
+The signature is computed over the raw UTF-8 JSON request body using the subscriber's shared secret:
+
+$$\text{Signature} = \text{HMAC-SHA256}(\text{Secret}, \text{raw body})$$
+
+### Verifying Signatures in Your Webhook Handler
+
+```typescript
+import crypto from "crypto";
+import { Request, Response } from "express";
+
+export function verifyRemitLendWebhook(req: Request, res: Response, next: Function) {
+  const signature = req.headers["x-remitlend-signature"] as string;
+  const webhookSecret = process.env.MY_WEBHOOK_SECRET;
+
+  if (!signature || !webhookSecret) {
+    return res.status(401).json({ error: "Missing signature or secret" });
+  }
+
+  // Compute expected HMAC from raw payload string
+  const rawBody = (req as any).rawBody || JSON.stringify(req.body);
+  const expectedSignature = crypto
+    .createHmac("sha256", webhookSecret)
+    .update(rawBody)
+    .digest("hex");
+
+  // Constant-time comparison to prevent timing attacks
+  const isMatch = crypto.timingSafeEqual(
+    Buffer.from(signature, "hex"),
+    Buffer.from(expectedSignature, "hex")
+  );
+
+  if (!isMatch) {
+    return res.status(401).json({ error: "Invalid webhook signature" });
+  }
+
+  next();
+}
 ```
 
-#### Secret format requirements
-
-The server validates secret format at startup and exits if any check fails:
-
-| Variable                    | Requirement                                               |
-| --------------------------- | --------------------------------------------------------- |
-| `JWT_SECRET`                | At least 32 characters                                    |
-| `INTERNAL_API_KEY`          | At least 32 characters                                    |
-| `LOAN_MANAGER_ADMIN_SECRET` | Valid Stellar Ed25519 secret seed (`S...`, 56 characters) |
+---
 
 ## Available Scripts
 
